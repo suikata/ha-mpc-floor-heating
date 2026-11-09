@@ -1,0 +1,126 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Messwerte",
+        "description": "Wähle die Sensoren, aus denen das Gebäudemodell lernt. Verwendet werden ihre Stundenstatistiken aus dem Recorder.",
+        "data": {
+          "name": "Name",
+          "room_sensors": "Raumtemperatur-Sensoren",
+          "supply_sensor": "Gemessene Vorlauftemperatur",
+          "outdoor_sensor": "Außentemperatur",
+          "weather_entity": "Wettervorhersage",
+          "price_sensor": "Strompreis-Prognose (optional)"
+        },
+        "data_description": {
+          "room_sensors": "Räume, die dieser Heizkreis versorgt. Geregelt wird auf ihren Mittelwert.",
+          "supply_sensor": "Die tatsächliche Vorlauftemperatur des Fußbodenheizkreises nach dem Mischer.",
+          "outdoor_sensor": "Eine zuverlässige Außentemperatur, am besten ein Mittelwert mehrerer Sensoren.",
+          "weather_entity": "Braucht eine stündliche Vorhersage. Ohne sie wird die aktuelle Außentemperatur fortgeschrieben.",
+          "price_sensor": "Ein Sensor mit stündlicher Preisliste in den Attributen (EPEX Spot, Nord Pool, Tibber, …)."
+        }
+      },
+      "control": {
+        "title": "Stellglied",
+        "description": "Wie der berechnete Vorlauf-Sollwert zur Heizung kommt. Die Integration startet im Schattenbetrieb und schreibt erst, wenn du den Schalter „Regelung aktiv“ einschaltest.",
+        "data": {
+          "control_mode": "Regelungsart",
+          "target_entity": "Ziel-Entität",
+          "setpoint_sensor": "Sensor für den wirksamen Sollwert",
+          "enable_entity": "Freigabe-Entität (optional)"
+        },
+        "data_description": {
+          "target_entity": "Offset: die Offset-Zahl. Absolut: eine number oder input_number für den Sollwert. Climate: die Climate-Entität des Vorlaufreglers.",
+          "setpoint_sensor": "Pflicht im Offset-Modus: der Vorlauf-Sollwert, mit dem die Heizung arbeitet, inklusive Offset.",
+          "enable_entity": "Regelt nur, solange diese Entität an (oder heat) ist. Sonst pausiert der Regler."
+        }
+      }
+    },
+    "error": {
+      "rooms_required": "Wähle mindestens einen Raumsensor.",
+      "target_not_climate": "Der Climate-Modus braucht eine Climate-Entität.",
+      "target_not_number": "Dieser Modus braucht eine number- oder input_number-Entität.",
+      "setpoint_required": "Der Offset-Modus braucht den Sensor für den wirksamen Sollwert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MPC Fußbodenheizung",
+        "data": {
+          "room_sensors": "Raumtemperatur-Sensoren",
+          "supply_sensor": "Gemessene Vorlauftemperatur",
+          "outdoor_sensor": "Außentemperatur",
+          "weather_entity": "Wettervorhersage",
+          "price_sensor": "Strompreis-Prognose (optional)",
+          "control_mode": "Regelungsart",
+          "target_entity": "Ziel-Entität",
+          "setpoint_sensor": "Sensor für den wirksamen Sollwert",
+          "enable_entity": "Freigabe-Entität (optional)",
+          "horizon": "Prognosehorizont",
+          "train_days": "Trainingszeitraum",
+          "offset_reset": "Offset bei Rückgabe der Regelung"
+        },
+        "data_description": {
+          "horizon": "So viele Stunden schaut der Regler voraus. Sollte deutlich über der Reaktionszeit des Bodens liegen.",
+          "train_days": "Tage an Recorder-Statistik, aus denen das Modell lernt. Wird jede Nacht neu gelernt.",
+          "offset_reset": "Auf diesen Wert wird der Offset gesetzt, wenn der Schalter ausgeht oder die Integration entladen wird."
+        }
+      }
+    },
+    "error": {
+      "rooms_required": "Wähle mindestens einen Raumsensor.",
+      "target_not_climate": "Der Climate-Modus braucht eine Climate-Entität.",
+      "target_not_number": "Dieser Modus braucht eine number- oder input_number-Entität.",
+      "setpoint_required": "Der Offset-Modus braucht den Sensor für den wirksamen Sollwert."
+    }
+  },
+  "selector": {
+    "control_mode": {
+      "options": {
+        "offset": "Offset auf die vorhandene Heizkurve",
+        "absolute": "Absoluter Sollwert (number)",
+        "climate": "Absoluter Sollwert (Climate-Entität)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "supply_setpoint": { "name": "Vorlauf Soll" },
+      "room_average": { "name": "Raumtemperatur Mittel" },
+      "room_forecast_6h": { "name": "Raumtemperatur Prognose 6 h" },
+      "status": {
+        "name": "Status",
+        "state": {
+          "no_model": "Noch kein Modell",
+          "shadow": "Schattenbetrieb",
+          "active": "Aktiv",
+          "paused": "Pausiert",
+          "input_missing": "Eingangswert fehlt",
+          "write_failed": "Schreiben fehlgeschlagen"
+        }
+      },
+      "model_dead_time": { "name": "Modell Totzeit" },
+      "model_screed_tau": { "name": "Modell Zeitkonstante Estrich" },
+      "model_room_tau": { "name": "Modell Zeitkonstante Raum" },
+      "model_error": { "name": "Modell Fehler (12 h)" },
+      "model_trained": { "name": "Modell gelernt" }
+    },
+    "number": {
+      "comfort_min": { "name": "Komfort Minimum" },
+      "comfort_max": { "name": "Komfort Maximum" },
+      "supply_min": { "name": "Vorlauf Minimum" },
+      "supply_max": { "name": "Vorlauf Maximum" },
+      "max_step": { "name": "Max. Änderung pro Stunde" },
+      "w_move": { "name": "Gewicht Ruhe" },
+      "w_cost": { "name": "Gewicht Energie/Preis" }
+    },
+    "switch": {
+      "control_active": { "name": "Regelung aktiv" }
+    },
+    "button": {
+      "retrain": { "name": "Modell neu lernen" },
+      "recalculate": { "name": "Jetzt berechnen" }
+    }
+  }
+}

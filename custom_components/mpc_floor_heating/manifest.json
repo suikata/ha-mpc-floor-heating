@@ -1,0 +1,14 @@
+{
+  "domain": "mpc_floor_heating",
+  "name": "MPC Floor Heating",
+  "codeowners": ["@suikata"],
+  "config_flow": true,
+  "dependencies": ["recorder"],
+  "after_dependencies": ["weather"],
+  "documentation": "https://github.com/suikata/ha-mpc-floor-heating",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/suikata/ha-mpc-floor-heating/issues",
+  "requirements": ["numpy"],
+  "version": "0.1.0"
+}
