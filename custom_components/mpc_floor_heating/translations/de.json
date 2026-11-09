@@ -109,16 +109,71 @@
         "name": "Vorlauf Sollwert Ausgang"
       },
       "supply_setpoint": {
-        "name": "Vorlauf Sollwert berechnet"
+        "name": "Vorlauf Sollwert berechnet",
+        "state_attributes": {
+          "supply_unlimited": {
+            "name": "Vorlauf ohne Änderungsbegrenzung"
+          },
+          "steady_state_supply": {
+            "name": "Stationärer Vorlauf"
+          },
+          "written_value": {
+            "name": "Geschriebener Wert"
+          },
+          "iterations": {
+            "name": "Iterationen"
+          },
+          "plan": {
+            "name": "Plan"
+          }
+        }
       },
       "room_average": {
         "name": "Raumtemperatur Mittel"
       },
       "room_forecast_6h": {
-        "name": "Raumtemperatur Prognose 6 h"
+        "name": "Raumtemperatur Prognose 6 h",
+        "state_attributes": {
+          "min_24h": {
+            "name": "Minimum nächste 24 h"
+          },
+          "max_24h": {
+            "name": "Maximum nächste 24 h"
+          },
+          "in_12h": {
+            "name": "In 12 h"
+          }
+        }
       },
       "learning_progress": {
-        "name": "Lernfortschritt"
+        "name": "Lernfortschritt",
+        "state_attributes": {
+          "ready": {
+            "name": "Einsatzbereit"
+          },
+          "usable_hours": {
+            "name": "Nutzbare Stunden"
+          },
+          "required_hours": {
+            "name": "Benötigte Stunden"
+          },
+          "model_error": {
+            "name": "Modellfehler"
+          },
+          "max_model_error": {
+            "name": "Maximaler Modellfehler"
+          },
+          "last_error": {
+            "name": "Letztes Problem",
+            "state": {
+              "collecting_data": "Sammle Daten für das Modell",
+              "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
+              "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
+              "outdoor_missing": "Keine Außentemperatur",
+              "write_error": "Ziel-Entität hat den Sollwert abgelehnt, siehe Protokoll"
+            }
+          }
+        }
       },
       "status": {
         "name": "Status",
@@ -129,10 +184,52 @@
           "paused": "Pausiert, kein Heizbetrieb",
           "input_missing": "Messwert fehlt",
           "write_failed": "Übertragung fehlgeschlagen"
+        },
+        "state_attributes": {
+          "message": {
+            "name": "Meldung",
+            "state": {
+              "collecting_data": "Sammle Daten für das Modell",
+              "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
+              "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
+              "outdoor_missing": "Keine Außentemperatur",
+              "write_error": "Ziel-Entität hat den Sollwert abgelehnt, siehe Protokoll"
+            }
+          }
         }
       },
       "model_dead_time": {
-        "name": "Modell Totzeit"
+        "name": "Modell Totzeit",
+        "state_attributes": {
+          "a_floor_to_room": {
+            "name": "a Boden zu Raum"
+          },
+          "b_room_to_outside": {
+            "name": "b Raum nach außen"
+          },
+          "c_gains": {
+            "name": "c Wärmegewinne"
+          },
+          "rmse_1h": {
+            "name": "Fehler 1 h"
+          },
+          "rows": {
+            "name": "Verwendete Stunden"
+          },
+          "runner_up": {
+            "name": "Nächstbeste Modelle"
+          },
+          "error": {
+            "name": "Letztes Problem",
+            "state": {
+              "collecting_data": "Sammle Daten für das Modell",
+              "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
+              "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
+              "outdoor_missing": "Keine Außentemperatur",
+              "write_error": "Ziel-Entität hat den Sollwert abgelehnt, siehe Protokoll"
+            }
+          }
+        }
       },
       "model_screed_tau": {
         "name": "Modell Zeitkonstante Estrich"

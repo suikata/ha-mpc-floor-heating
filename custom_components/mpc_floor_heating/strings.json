@@ -109,16 +109,71 @@
         "name": "Supply set point output"
       },
       "supply_setpoint": {
-        "name": "Supply set point calculated"
+        "name": "Supply set point calculated",
+        "state_attributes": {
+          "supply_unlimited": {
+            "name": "Supply without rate limit"
+          },
+          "steady_state_supply": {
+            "name": "Steady-state supply"
+          },
+          "written_value": {
+            "name": "Written value"
+          },
+          "iterations": {
+            "name": "Solver iterations"
+          },
+          "plan": {
+            "name": "Plan"
+          }
+        }
       },
       "room_average": {
         "name": "Room temperature mean"
       },
       "room_forecast_6h": {
-        "name": "Room forecast in 6 h"
+        "name": "Room forecast in 6 h",
+        "state_attributes": {
+          "min_24h": {
+            "name": "Minimum next 24 h"
+          },
+          "max_24h": {
+            "name": "Maximum next 24 h"
+          },
+          "in_12h": {
+            "name": "In 12 h"
+          }
+        }
       },
       "learning_progress": {
-        "name": "Learning progress"
+        "name": "Learning progress",
+        "state_attributes": {
+          "ready": {
+            "name": "Ready"
+          },
+          "usable_hours": {
+            "name": "Usable hours"
+          },
+          "required_hours": {
+            "name": "Required hours"
+          },
+          "model_error": {
+            "name": "Model error"
+          },
+          "max_model_error": {
+            "name": "Maximum model error"
+          },
+          "last_error": {
+            "name": "Last problem",
+            "state": {
+              "collecting_data": "Collecting data for the model",
+              "model_not_identifiable": "No plausible model found yet, more data or more variation of the supply temperature needed",
+              "room_or_supply_missing": "Room or supply temperature unavailable",
+              "outdoor_missing": "No outdoor temperature",
+              "write_error": "Target entity rejected the set point, see log"
+            }
+          }
+        }
       },
       "status": {
         "name": "Status",
@@ -129,10 +184,52 @@
           "paused": "Paused, no heating mode",
           "input_missing": "Measurement missing",
           "write_failed": "Transmission failed"
+        },
+        "state_attributes": {
+          "message": {
+            "name": "Message",
+            "state": {
+              "collecting_data": "Collecting data for the model",
+              "model_not_identifiable": "No plausible model found yet, more data or more variation of the supply temperature needed",
+              "room_or_supply_missing": "Room or supply temperature unavailable",
+              "outdoor_missing": "No outdoor temperature",
+              "write_error": "Target entity rejected the set point, see log"
+            }
+          }
         }
       },
       "model_dead_time": {
-        "name": "Model dead time"
+        "name": "Model dead time",
+        "state_attributes": {
+          "a_floor_to_room": {
+            "name": "a floor to room"
+          },
+          "b_room_to_outside": {
+            "name": "b room to outside"
+          },
+          "c_gains": {
+            "name": "c gains"
+          },
+          "rmse_1h": {
+            "name": "Error 1 h"
+          },
+          "rows": {
+            "name": "Hours used"
+          },
+          "runner_up": {
+            "name": "Runner-up models"
+          },
+          "error": {
+            "name": "Last problem",
+            "state": {
+              "collecting_data": "Collecting data for the model",
+              "model_not_identifiable": "No plausible model found yet, more data or more variation of the supply temperature needed",
+              "room_or_supply_missing": "Room or supply temperature unavailable",
+              "outdoor_missing": "No outdoor temperature",
+              "write_error": "Target entity rejected the set point, see log"
+            }
+          }
+        }
       },
       "model_screed_tau": {
         "name": "Model screed time constant"

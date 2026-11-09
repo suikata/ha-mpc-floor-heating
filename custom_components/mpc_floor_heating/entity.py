@@ -23,6 +23,6 @@ class MpcEntity(CoordinatorEntity[MpcCoordinator]):
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
             manufacturer="MPC Floor Heating",
-            model="Model predictive supply temperature control",
+            model="MPC",
             entry_type=DeviceEntryType.SERVICE,
         )

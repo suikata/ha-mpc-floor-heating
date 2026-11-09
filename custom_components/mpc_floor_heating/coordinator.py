@@ -252,7 +252,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         try:
             model = await self.hass.async_add_executor_job(identify, y, u, o)
         except ModelError as err:
-            self.model_error = str(err)
+            self.model_error = "model_not_identifiable"
             _LOGGER.warning("Model identification failed: %s", err)
             return
         model.trained_at = dt_util.utcnow().isoformat()
@@ -345,7 +345,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             except HomeAssistantError as err:
                 raise UpdateFailed(f"Reading the recorder failed: {err}") from err
         if self.model is None:
-            return MpcData(status=STATUS_LEARNING, message=self.model_error)
+            return MpcData(status=STATUS_LEARNING, message=self.model_error or "collecting_data")
 
         model = self.model
         horizon = int(self.settings.horizon)
@@ -361,7 +361,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         supply_now = _state_float(self.hass.states.get(self.cfg[CONF_SUPPLY_SENSOR]))
         outdoor_now = _state_float(self.hass.states.get(self.cfg[CONF_OUTDOOR_SENSOR]))
         if room_now is None or (not np.isfinite(u_hist).any() and supply_now is None):
-            return MpcData(status=STATUS_INPUT_MISSING, message="room or supply temperature unavailable")
+            return MpcData(status=STATUS_INPUT_MISSING, message="room_or_supply_missing")
         u_hist = fill_edges(u_hist, supply_now)
 
         slot_starts = [hour0 + timedelta(hours=k) for k in range(horizon)]
@@ -369,7 +369,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         try:
             outdoor = outdoor_series(await self._async_outdoor_forecast(), slot_ts, now.timestamp(), outdoor_now)
         except ValueError:
-            return MpcData(status=STATUS_INPUT_MISSING, message="no outdoor temperature")
+            return MpcData(status=STATUS_INPUT_MISSING, message="outdoor_missing")
         price_pts = self._price_points()
         price = step_series(price_pts, slot_ts) if price_pts else None
 
@@ -409,6 +409,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         )
         if not self.model_credible:
             data.status = STATUS_LEARNING
+            data.message = "collecting_data"
             return data
         if not self.active:
             return data
@@ -426,7 +427,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         except HomeAssistantError as err:
             _LOGGER.error("Writing the set point failed: %s", err)
             data.status = STATUS_WRITE_FAILED
-            data.message = str(err)
+            data.message = "write_error"
         return data
 
     # -------------------------------------------------------------------- write
