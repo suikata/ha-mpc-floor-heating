@@ -178,3 +178,10 @@ def test_fill_edges_uses_live_value():
     out = T.fill_edges(arr, last_value=24.0)
     assert out[1] == pytest.approx(21.0)
     assert out[3] == pytest.approx(23.0)
+
+
+def test_naive_times_use_default_zone():
+    from datetime import timezone
+    tz = timezone(timedelta(hours=1))
+    assert T.to_timestamp("2026-11-09T15:00:00") is None
+    assert T.to_timestamp("2026-11-09T15:00:00", None, tz) == datetime(2026, 11, 9, 14, 0, tzinfo=UTC).timestamp()

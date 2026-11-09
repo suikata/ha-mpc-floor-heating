@@ -117,6 +117,7 @@ def _install_stubs(stats: dict[str, list[dict]]):
         now=lambda: NOW,
         utcnow=lambda: NOW,
         parse_datetime=lambda s: datetime.fromisoformat(s),
+        get_default_time_zone=lambda: UTC,
     )
     _module("homeassistant.util", dt=dt)
 
@@ -142,13 +143,11 @@ class FakeServices:
         if (domain, service) == ("weather", "get_forecasts"):
             eid = target["entity_id"]
             fc = [
-                {"datetime": (NOW.replace(minute=0) + timedelta(hours=h)).isoformat(), "temperature": 4.0 - 0.1 * h}
+                # naive local times, like Weather Station Core sends them
+                {"datetime": (NOW.replace(minute=0, tzinfo=None) + timedelta(hours=h)).isoformat(), "temperature": 4.0 - 0.1 * h}
                 for h in range(48)
             ]
             return {eid: {"forecast": fc}}
-        if service == "set_value":
-            # emulate ESPHome: offset changes, set point sensor follows a bit later
-            self.hass.states.set(data["entity_id"], data["value"], {"min": -5, "max": 10, "step": 1}, NOW + timedelta(seconds=1))
         return None
 
 
@@ -195,60 +194,89 @@ def setup():
     hass.states.set("sensor.supply", 30.4)
     hass.states.set("sensor.outdoor", 5.0)
     hass.states.set("weather.home", "cloudy")
-    hass.states.set("number.offset", 0.0, {"min": -5, "max": 10, "step": 1}, NOW - timedelta(hours=3))
-    hass.states.set("sensor.setpoint", 30.3, {}, NOW - timedelta(minutes=30))
+    hass.states.set("number.supply_sp", 30.0, {"min": 20, "max": 45, "step": 0.5}, NOW - timedelta(hours=3))
     options = {
         const.CONF_ROOM_SENSORS: rooms,
         const.CONF_SUPPLY_SENSOR: "sensor.supply",
         const.CONF_OUTDOOR_SENSOR: "sensor.outdoor",
         const.CONF_WEATHER: "weather.home",
-        const.CONF_CONTROL_MODE: const.MODE_OFFSET,
-        const.CONF_TARGET: "number.offset",
-        const.CONF_SETPOINT_SENSOR: "sensor.setpoint",
+        const.CONF_CONTROL_MODE: const.MODE_SENSOR,
         const.CONF_HORIZON: 36,
         const.CONF_TRAIN_DAYS: 30,
-        const.CONF_OFFSET_RESET: 0.0,
     }
     entry = ConfigEntry(options)
     coordinator = coord_mod.MpcCoordinator(hass, entry)
     return hass, coordinator, const
 
 
-def test_shadow_then_active_offset(setup):
+def test_sensor_mode_output_only_when_active(setup):
     hass, coordinator, const = setup
 
     async def run():
         await coordinator.async_load()
         await coordinator.async_refresh()
-        shadow = coordinator.data
-        assert shadow.status == const.STATUS_SHADOW, shadow.message
-        assert coordinator.model is not None
-        assert not any(c[1] == "set_value" for c in hass.services.calls)
-        assert len(shadow.result.plan_supply) == 36
-        assert 22.0 <= shadow.result.supply <= 38.0
-        assert shadow.outdoor_plan[0] == pytest.approx(5.0, abs=0.5)  # forecast bias-corrected to the measurement
+        data = coordinator.data
+        assert coordinator.model_credible, coordinator.model
+        assert coordinator.learning_progress == 100
+        assert data.status == const.STATUS_STANDBY, data.message
+        assert data.output is None
+        assert len(data.result.plan_supply) == 36
+        assert 22.0 <= data.result.supply <= 38.0
+        assert data.outdoor_plan[0] == pytest.approx(5.0, abs=0.5)  # forecast bias-corrected
+        assert data.outdoor_plan[-1] < data.outdoor_plan[0] - 2.0  # the forecast is used, not held
 
         await coordinator.async_set_active(True)
-        active = coordinator.data
-        assert active.status == const.STATUS_ACTIVE, active.message
-        writes = [c for c in hass.services.calls if c[1] == "set_value"]
-        target = active.result.supply
-        expected = max(-5, min(10, round(target - 30.3)))
-        if expected != 0:
-            assert writes and writes[-1][2]["value"] == expected
-        assert active.written == expected
-
-        # set point sensor has not followed yet: the cached baseline must be used,
-        # not "old set point minus new offset"
-        await coordinator.async_refresh()
-        assert coordinator.data.written == expected
+        data = coordinator.data
+        assert data.status == const.STATUS_ACTIVE, data.message
+        assert data.output == pytest.approx(round(data.result.supply, 1))
+        assert not hass.services.calls or all(c[0] == "weather" for c in hass.services.calls)
 
         await coordinator.async_set_active(False)
-        last = [c for c in hass.services.calls if c[1] == "set_value"][-1]
-        assert last[2] == {"entity_id": "number.offset", "value": 0.0}
-        assert coordinator.data.status == const.STATUS_SHADOW
+        assert coordinator.data.output is None
+        assert coordinator.data.status == const.STATUS_STANDBY
 
     asyncio.run(run())
+
+
+def test_number_mode_writes_quantised_value(setup):
+    hass, coordinator, const = setup
+    coordinator.cfg[const.CONF_CONTROL_MODE] = const.MODE_NUMBER
+    coordinator.cfg[const.CONF_TARGET] = "number.supply_sp"
+
+    async def run():
+        coordinator.active = True
+        await coordinator.async_refresh()
+        data = coordinator.data
+        assert data.status == const.STATUS_ACTIVE, data.message
+        writes = [c for c in hass.services.calls if c[1] == "set_value"]
+        assert writes[-1][2]["entity_id"] == "number.supply_sp"
+        assert writes[-1][2]["value"] == round(data.result.supply * 2) / 2
+        # heartbeat: written again on the next run
+        await coordinator.async_refresh()
+        assert len([c for c in hass.services.calls if c[1] == "set_value"]) == 2
+
+    asyncio.run(run())
+
+
+def test_learning_blocks_control(setup):
+    hass, coordinator, const = setup
+
+    async def run():
+        await coordinator.async_refresh()
+        coordinator.model.rows = 50  # pretend we only have two days of data
+        coordinator._train_requested = False
+        coordinator._async_train = _no_train  # keep the weak model
+        coordinator.active = True
+        await coordinator.async_refresh()
+        assert coordinator.data.status == const.STATUS_LEARNING
+        assert coordinator.data.output is None
+        assert 0 < coordinator.learning_progress < 100
+
+    asyncio.run(run())
+
+
+async def _no_train():
+    return None
 
 
 def test_input_missing(setup):
@@ -272,6 +300,21 @@ def test_enable_entity_pauses(setup):
         coordinator.active = True
         await coordinator.async_refresh()
         assert coordinator.data.status == const.STATUS_PAUSED
+        assert not any(c[1] == "set_value" for c in hass.services.calls)
+
+    asyncio.run(run())
+
+
+def test_number_mode_refuses_offset_like_target(setup):
+    hass, coordinator, const = setup
+    hass.states.set("number.offset", 0.0, {"min": -5, "max": 10, "step": 1})
+    coordinator.cfg[const.CONF_CONTROL_MODE] = const.MODE_NUMBER
+    coordinator.cfg[const.CONF_TARGET] = "number.offset"
+
+    async def run():
+        coordinator.active = True
+        await coordinator.async_refresh()
+        assert coordinator.data.status == const.STATUS_WRITE_FAILED
         assert not any(c[1] == "set_value" for c in hass.services.calls)
 
     asyncio.run(run())

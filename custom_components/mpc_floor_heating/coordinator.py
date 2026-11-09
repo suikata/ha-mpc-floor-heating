@@ -27,31 +27,31 @@ from .const import (
     CONF_CONTROL_MODE,
     CONF_ENABLE_ENTITY,
     CONF_HORIZON,
-    CONF_OFFSET_RESET,
     CONF_OUTDOOR_SENSOR,
     CONF_PRICE_SENSOR,
     CONF_ROOM_SENSORS,
-    CONF_SETPOINT_SENSOR,
     CONF_SUPPLY_SENSOR,
     CONF_TARGET,
     CONF_TRAIN_DAYS,
     CONF_WEATHER,
+    CONTROL_MODES,
     DEFAULT_HORIZON,
-    DEFAULT_OFFSET_RESET,
     DEFAULT_TRAIN_DAYS,
     DISABLED_STATES,
     DOMAIN,
     HISTORY_HOURS,
+    MAX_CREDIBLE_ERROR,
+    MIN_CREDIBLE_HOURS,
     MODE_CLIMATE,
-    MODE_OFFSET,
+    MODE_SENSOR,
     RETRAIN_HOUR,
     RETRAIN_MINUTE,
     RUN_MINUTE,
     STATUS_ACTIVE,
     STATUS_INPUT_MISSING,
-    STATUS_NO_MODEL,
+    STATUS_LEARNING,
     STATUS_PAUSED,
-    STATUS_SHADOW,
+    STATUS_STANDBY,
     STATUS_WRITE_FAILED,
     STORAGE_VERSION,
 )
@@ -84,6 +84,7 @@ class MpcData:
     price_plan: list[float | None] = field(default_factory=list)
     slot_starts: list[datetime] = field(default_factory=list)
     written: float | None = None
+    output: float | None = None  # set point offered by the output sensor
     message: str | None = None
 
 
@@ -107,6 +108,8 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             update_interval=None,  # scheduled by the clock, see async_start
         )
         self.cfg: dict[str, Any] = {**entry.data, **entry.options}
+        if self.cfg.get(CONF_CONTROL_MODE) not in CONTROL_MODES:  # never write blindly
+            self.cfg[CONF_CONTROL_MODE] = MODE_SENSOR
         self.settings = MpcSettings(horizon=int(self.cfg.get(CONF_HORIZON, DEFAULT_HORIZON)))
         self.model: ThermalModel | None = None
         self.model_error: str | None = None
@@ -116,7 +119,6 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         )
         self._warm_start: np.ndarray | None = None
         self._last_written: float | None = None
-        self._offset_baseline: float | None = None
         self._train_requested = False
 
     # ------------------------------------------------------------------ setup
@@ -151,6 +153,22 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             self.cfg[CONF_SUPPLY_SENSOR],
             self.cfg[CONF_OUTDOOR_SENSOR],
         ]
+
+    @property
+    def model_credible(self) -> bool:
+        """Enough data and a small enough prediction error to control with."""
+        m = self.model
+        return m is not None and m.rows >= MIN_CREDIBLE_HOURS and m.rmse_multi <= MAX_CREDIBLE_ERROR
+
+    @property
+    def learning_progress(self) -> int:
+        """0..100 % of the data needed for a trustworthy model."""
+        if self.model is None:
+            return 0
+        pct = int(min(100.0, 100.0 * self.model.rows / MIN_CREDIBLE_HOURS))
+        if pct == 100 and not self.model_credible:
+            return 99  # enough data, but the error is still too large
+        return pct
 
     async def _async_tick(self, _now: datetime) -> None:
         await self.async_refresh()
@@ -270,7 +288,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             return []
         points = []
         for item in (resp or {}).get(weather, {}).get("forecast", []):
-            ts = to_timestamp(item.get("datetime"), dt_util.parse_datetime)
+            ts = to_timestamp(item.get("datetime"), dt_util.parse_datetime, dt_util.get_default_time_zone())
             temp = to_float(item.get("temperature"))
             if ts is not None and temp is not None:
                 points.append((ts, temp))
@@ -280,7 +298,9 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         sensor = self.cfg.get(CONF_PRICE_SENSOR)
         if not sensor or (state := self.hass.states.get(sensor)) is None:
             return []
-        return extract_price_points(dict(state.attributes), dt_util.parse_datetime)
+        return extract_price_points(
+            dict(state.attributes), dt_util.parse_datetime, dt_util.get_default_time_zone()
+        )
 
     # ------------------------------------------------------------------ helpers
     def _current_room(self) -> float | None:
@@ -297,7 +317,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             state = self.hass.states.get(enable)
             if state is None or state.state.lower() in DISABLED_STATES:
                 return False
-        if self.cfg[CONF_CONTROL_MODE] == MODE_CLIMATE:
+        if self.cfg.get(CONF_CONTROL_MODE) == MODE_CLIMATE:
             state = self.hass.states.get(self.cfg[CONF_TARGET])
             if state is None or state.state in ("off", STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return False
@@ -305,26 +325,27 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
 
     def current_setpoint(self) -> float | None:
         """Supply set point that is in effect right now."""
-        mode = self.cfg[CONF_CONTROL_MODE]
-        if mode == MODE_OFFSET:
-            return _state_float(self.hass.states.get(self.cfg.get(CONF_SETPOINT_SENSOR, "")))
+        mode = self.cfg.get(CONF_CONTROL_MODE, MODE_SENSOR)
+        if mode == MODE_SENSOR:
+            return self._last_written if self.active else None
         state = self.hass.states.get(self.cfg[CONF_TARGET])
         if state is None:
             return None
-        if mode == MODE_CLIMATE:
-            return to_float(state.attributes.get("temperature"))
-        return _state_float(state)
+        value = to_float(state.attributes.get("temperature")) if mode == MODE_CLIMATE else _state_float(state)
+        if value is None or not 10.0 <= value <= 80.0:  # not a supply temperature
+            return None
+        return value
 
     # ------------------------------------------------------------------- update
     async def _async_update_data(self) -> MpcData:
-        if self.model is None or self._train_requested:
+        if self.model is None or self._train_requested or not self.model_credible:
             self._train_requested = False
             try:
                 await self._async_train()
             except HomeAssistantError as err:
                 raise UpdateFailed(f"Reading the recorder failed: {err}") from err
         if self.model is None:
-            return MpcData(status=STATUS_NO_MODEL, message=self.model_error)
+            return MpcData(status=STATUS_LEARNING, message=self.model_error)
 
         model = self.model
         horizon = int(self.settings.horizon)
@@ -375,7 +396,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         self._warm_start = np.array(result.plan_supply[1 : free + 1] + [result.plan_supply[-1]])
 
         data = MpcData(
-            status=STATUS_SHADOW,
+            status=STATUS_STANDBY,
             result=result,
             room_now=room_now,
             outdoor_plan=[float(x) for x in outdoor],
@@ -386,10 +407,18 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             ),
             slot_starts=slot_starts,
         )
+        if not self.model_credible:
+            data.status = STATUS_LEARNING
+            return data
         if not self.active:
             return data
         if not self._control_allowed():
             data.status = STATUS_PAUSED
+            return data
+        if self.cfg.get(CONF_CONTROL_MODE, MODE_SENSOR) == MODE_SENSOR:
+            data.output = round(result.supply, 1)
+            self._last_written = data.output
+            data.status = STATUS_ACTIVE
             return data
         try:
             data.written = await self._async_write(result.supply)
@@ -433,52 +462,24 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             self._last_written = value
             return value
 
-        step = to_float(attrs.get("step"))
-        low = to_float(attrs.get("min"))
-        high = to_float(attrs.get("max"))
-        current = _state_float(state)
-        domain = target.split(".", 1)[0]
-
-        if mode == MODE_OFFSET:
-            sp_state = self.hass.states.get(self.cfg[CONF_SETPOINT_SENSOR])
-            setpoint = _state_float(sp_state)
-            if setpoint is None or current is None:
-                raise HomeAssistantError("set point sensor or offset not available")
-            # the set point sensor already contains the active offset; it is only
-            # trustworthy once it was updated after the last offset change
-            if sp_state is not None and sp_state.last_updated >= state.last_updated:
-                self._offset_baseline = setpoint - current
-            baseline = self._offset_baseline if self._offset_baseline is not None else setpoint - current
-            value = self._quantize(supply - baseline, step, low, high)
-            self._last_written = baseline + value
-        else:
-            value = self._quantize(supply, step, low, high)
-            self._last_written = value
-
+        low, high = to_float(attrs.get("min")), to_float(attrs.get("max"))
+        if high is not None and high < self.settings.supply_min:
+            # e.g. an offset number was chosen: never push a supply temperature into it
+            raise HomeAssistantError(
+                f"{target} accepts at most {high}, which cannot be a supply temperature"
+            )
+        value = self._quantize(supply, to_float(attrs.get("step")), low, high)
         # written every run, even when unchanged: acts as a heartbeat for a
         # watchdog in the heating controller
         await self.hass.services.async_call(
-            domain, "set_value", {ATTR_ENTITY_ID: target, "value": value}, blocking=True
+            target.split(".", 1)[0], "set_value", {ATTR_ENTITY_ID: target, "value": value}, blocking=True
         )
+        self._last_written = value
         return value
 
     async def async_set_active(self, active: bool) -> None:
-        """Switch between shadow and active operation."""
-        was_active = self.active
+        """Switch control on or off and recompute right away."""
         self.active = active
-        if was_active and not active:
-            await self.async_release()
+        if not active:
+            self._last_written = None
         await self.async_request_refresh()
-
-    async def async_release(self) -> None:
-        """Hand control back: reset the offset when the offset mode is used."""
-        if self.cfg[CONF_CONTROL_MODE] != MODE_OFFSET:
-            return
-        target = self.cfg[CONF_TARGET]
-        reset = float(self.cfg.get(CONF_OFFSET_RESET, DEFAULT_OFFSET_RESET))
-        try:
-            await self.hass.services.async_call(
-                target.split(".", 1)[0], "set_value", {ATTR_ENTITY_ID: target, "value": reset}, blocking=True
-            )
-        except HomeAssistantError as err:
-            _LOGGER.error("Resetting %s failed: %s", target, err)

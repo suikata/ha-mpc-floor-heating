@@ -6,6 +6,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_call_later
 
+from .const import CONF_CONTROL_MODE, CONF_TARGET, CONTROL_MODES, MODE_SENSOR
 from .coordinator import MpcConfigEntry, MpcCoordinator
 
 PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
@@ -37,14 +38,18 @@ async def _async_update_listener(hass: HomeAssistant, entry: MpcConfigEntry) -> 
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool:
-    """Unload a config entry.
-
-    In offset mode the offset goes back to its reset value whenever the
-    integration is unloaded (reload, disable, removal), so the heating falls
-    back to its own heating curve. A shutdown of Home Assistant does not unload
-    integrations; a watchdog in the heating controller covers that case.
-    """
-    coordinator = entry.runtime_data
-    if coordinator.active:
-        await coordinator.async_release()
+    """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool:
+    """Version 1 -> 2: the offset mode was replaced by the set point sensor."""
+    if entry.version == 1:
+        options = dict(entry.options)
+        for key in ("setpoint_sensor", "offset_reset"):
+            options.pop(key, None)
+        if options.get(CONF_CONTROL_MODE) not in CONTROL_MODES:
+            options[CONF_CONTROL_MODE] = MODE_SENSOR
+            options.pop(CONF_TARGET, None)
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    return True

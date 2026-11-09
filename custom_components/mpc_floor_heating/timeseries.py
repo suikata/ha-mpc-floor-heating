@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from datetime import datetime
+from datetime import datetime, tzinfo
 import math
 from typing import Any
 
@@ -24,13 +24,23 @@ VALUE_KEYS = (
 Point = tuple[float, float]  # (unix timestamp, value)
 
 
-def to_timestamp(value: Any, parse: Callable[[str], datetime | None] | None = None) -> float | None:
-    """Convert datetime, ISO string or epoch (s or ms) to a unix timestamp."""
+def to_timestamp(
+    value: Any,
+    parse: Callable[[str], datetime | None] | None = None,
+    default_tz: tzinfo | None = None,
+) -> float | None:
+    """Convert datetime, ISO string or epoch (s or ms) to a unix timestamp.
+
+    Times without a time zone (some weather integrations send those) are read
+    in `default_tz`, Home Assistant's time zone; without it they are refused.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return None  # refuse naive datetimes, they are ambiguous
+            if default_tz is None:
+                return None
+            value = value.replace(tzinfo=default_tz)
         return value.timestamp()
     if isinstance(value, (int, float)) and math.isfinite(value):
         return float(value) / 1000.0 if value > 1e11 else float(value)
@@ -41,7 +51,7 @@ def to_timestamp(value: Any, parse: Callable[[str], datetime | None] | None = No
                 parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             except ValueError:
                 return None
-        return to_timestamp(parsed)
+        return to_timestamp(parsed, None, default_tz)
     return None
 
 
@@ -55,7 +65,9 @@ def to_float(value: Any) -> float | None:
 
 
 def extract_price_points(
-    attributes: dict[str, Any], parse: Callable[[str], datetime | None] | None = None
+    attributes: dict[str, Any],
+    parse: Callable[[str], datetime | None] | None = None,
+    default_tz: tzinfo | None = None,
 ) -> list[Point]:
     """Find price lists in a sensor's attributes.
 
@@ -76,7 +88,7 @@ def extract_price_points(
         for item in attr:
             if not isinstance(item, dict):
                 continue
-            ts = to_timestamp(item.get(tkey), parse)
+            ts = to_timestamp(item.get(tkey), parse, default_tz)
             val = to_float(item.get(vkey))
             if ts is not None and val is not None:
                 points[ts] = val

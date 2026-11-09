@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Measurements",
-        "description": "Choose the sensors the building model learns from. Their hourly statistics in the recorder are used for training.",
+        "description": "The building model learns from the hourly statistics of these sensors in the recorder. With existing history it is ready right away.",
         "data": {
           "name": "Name",
           "room_sensors": "Room temperature sensors",
@@ -13,34 +13,39 @@
           "price_sensor": "Electricity price forecast (optional)"
         },
         "data_description": {
-          "room_sensors": "Rooms heated by this circuit. The controller uses their mean.",
+          "room_sensors": "Indoor temperature sensors of the rooms on this circuit, all preselected. Remove rooms that are not heated by it. The controller uses their mean.",
           "supply_sensor": "The actual flow temperature of the floor heating circuit, after the mixing valve.",
-          "outdoor_sensor": "A reliable outdoor temperature, ideally a mean of several sensors.",
+          "outdoor_sensor": "A reliable outdoor temperature, ideally a mean or median of several sensors.",
           "weather_entity": "Needs an hourly forecast. Without it the current outdoor temperature is held.",
-          "price_sensor": "A sensor with an hourly price list in its attributes (EPEX Spot, Nord Pool, Tibber, ...)."
+          "price_sensor": "A sensor with hourly prices in its attributes, e.g. from the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats work as well."
         }
       },
       "control": {
-        "title": "Actuator",
-        "description": "How the calculated supply set point reaches your heating. The integration starts in shadow mode and only writes once you turn on the switch \"Control active\".",
+        "title": "Set point output",
         "data": {
-          "control_mode": "Control mode",
-          "target_entity": "Target entity",
-          "setpoint_sensor": "Effective set point sensor",
-          "enable_entity": "Enable entity (optional)"
+          "control_mode": "How should the set point reach your heating?"
         },
         "data_description": {
-          "target_entity": "Offset: the offset number. Absolute: a number or input_number for the set point. Climate: the climate entity of the supply controller.",
-          "setpoint_sensor": "Required for the offset mode: the supply set point the heating uses, including the offset.",
-          "enable_entity": "Control only while this entity is on (or heat). Otherwise the controller pauses."
+          "control_mode": "With a set point sensor, the integration creates the sensor \"Supply set point output\". Your heating controller reads it (e.g. ESPHome homeassistant sensor). It only carries a value while control is active; otherwise it is unavailable and the controller keeps its own heating curve."
+        }
+      },
+      "target_climate": {
+        "title": "Climate entity",
+        "description": "The climate entity whose target temperature is the supply set point.",
+        "data": {
+          "target_entity": "Climate entity"
+        }
+      },
+      "target_number": {
+        "title": "Number entity",
+        "description": "The number or input_number that takes the supply set point. It is written every hour.",
+        "data": {
+          "target_entity": "Number entity"
         }
       }
     },
     "error": {
-      "rooms_required": "Choose at least one room sensor.",
-      "target_not_climate": "The climate mode needs a climate entity.",
-      "target_not_number": "This mode needs a number or input_number entity.",
-      "setpoint_required": "The offset mode needs the effective set point sensor."
+      "rooms_required": "Choose at least one room sensor."
     }
   },
   "options": {
@@ -53,74 +58,130 @@
           "outdoor_sensor": "Outdoor temperature",
           "weather_entity": "Weather forecast",
           "price_sensor": "Electricity price forecast (optional)",
-          "control_mode": "Control mode",
-          "target_entity": "Target entity",
-          "setpoint_sensor": "Effective set point sensor",
-          "enable_entity": "Enable entity (optional)",
+          "control_mode": "How should the set point reach your heating?",
+          "enable_entity": "Heating mode condition (optional)",
           "horizon": "Prediction horizon",
-          "train_days": "Training period",
-          "offset_reset": "Offset when control is handed back"
+          "train_days": "Training period"
         },
         "data_description": {
+          "room_sensors": "Indoor temperature sensors of the rooms on this circuit, all preselected. Remove rooms that are not heated by it. The controller uses their mean.",
+          "supply_sensor": "The actual flow temperature of the floor heating circuit, after the mixing valve.",
+          "outdoor_sensor": "A reliable outdoor temperature, ideally a mean or median of several sensors.",
+          "weather_entity": "Needs an hourly forecast. Without it the current outdoor temperature is held.",
+          "price_sensor": "A sensor with hourly prices in its attributes, e.g. from the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats work as well.",
+          "control_mode": "With a set point sensor, the integration creates the sensor \"Supply set point output\". Your heating controller reads it (e.g. ESPHome homeassistant sensor). It only carries a value while control is active; otherwise it is unavailable and the controller keeps its own heating curve.",
+          "enable_entity": "Not needed to switch control on: the integration has its own switch \"Control active\". Use this only to pause automatically, e.g. with the operating mode of the heating (off/cool pause, heat runs).",
           "horizon": "Hours the controller looks ahead. Should be well above the reaction time of the floor.",
-          "train_days": "Days of recorder statistics used to learn the model. Retrained every night.",
-          "offset_reset": "Value the offset is set to when the switch is turned off or the integration is unloaded."
+          "train_days": "Days of recorder statistics used to learn the model. Retrained every night."
+        }
+      },
+      "target_climate": {
+        "title": "Climate entity",
+        "description": "The climate entity whose target temperature is the supply set point.",
+        "data": {
+          "target_entity": "Climate entity"
+        }
+      },
+      "target_number": {
+        "title": "Number entity",
+        "description": "The number or input_number that takes the supply set point. It is written every hour.",
+        "data": {
+          "target_entity": "Number entity"
         }
       }
     },
     "error": {
-      "rooms_required": "Choose at least one room sensor.",
-      "target_not_climate": "The climate mode needs a climate entity.",
-      "target_not_number": "This mode needs a number or input_number entity.",
-      "setpoint_required": "The offset mode needs the effective set point sensor."
+      "rooms_required": "Choose at least one room sensor."
     }
   },
   "selector": {
     "control_mode": {
       "options": {
-        "offset": "Offset on the existing heating curve",
-        "absolute": "Absolute set point (number)",
-        "climate": "Absolute set point (climate entity)"
+        "sensor": "Own set point sensor (the heating controller reads it)",
+        "climate": "Absolute set point to a climate entity",
+        "number": "Absolute set point to a number entity"
       }
     }
   },
   "entity": {
     "sensor": {
-      "supply_setpoint": { "name": "Supply set point" },
-      "room_average": { "name": "Room temperature mean" },
-      "room_forecast_6h": { "name": "Room forecast in 6 h" },
+      "supply_output": {
+        "name": "Supply set point output"
+      },
+      "supply_setpoint": {
+        "name": "Supply set point calculated"
+      },
+      "room_average": {
+        "name": "Room temperature mean"
+      },
+      "room_forecast_6h": {
+        "name": "Room forecast in 6 h"
+      },
+      "learning_progress": {
+        "name": "Learning progress"
+      },
       "status": {
         "name": "Status",
         "state": {
-          "no_model": "No model yet",
-          "shadow": "Shadow mode",
-          "active": "Active",
-          "paused": "Paused",
-          "input_missing": "Input missing",
-          "write_failed": "Write failed"
+          "learning": "Learning model",
+          "standby": "Ready, control off",
+          "active": "Control active",
+          "paused": "Paused, no heating mode",
+          "input_missing": "Measurement missing",
+          "write_failed": "Transmission failed"
         }
       },
-      "model_dead_time": { "name": "Model dead time" },
-      "model_screed_tau": { "name": "Model screed time constant" },
-      "model_room_tau": { "name": "Model room time constant" },
-      "model_error": { "name": "Model error (12 h)" },
-      "model_trained": { "name": "Model trained" }
+      "model_dead_time": {
+        "name": "Model dead time"
+      },
+      "model_screed_tau": {
+        "name": "Model screed time constant"
+      },
+      "model_room_tau": {
+        "name": "Model room time constant"
+      },
+      "model_error": {
+        "name": "Model error (12 h)"
+      },
+      "model_trained": {
+        "name": "Model trained"
+      }
     },
     "number": {
-      "comfort_min": { "name": "Comfort minimum" },
-      "comfort_max": { "name": "Comfort maximum" },
-      "supply_min": { "name": "Supply minimum" },
-      "supply_max": { "name": "Supply maximum" },
-      "max_step": { "name": "Max change per hour" },
-      "w_move": { "name": "Smoothing weight" },
-      "w_cost": { "name": "Energy / price weight" }
+      "comfort_min": {
+        "name": "Comfort minimum"
+      },
+      "comfort_max": {
+        "name": "Comfort maximum"
+      },
+      "supply_min": {
+        "name": "Supply minimum"
+      },
+      "supply_max": {
+        "name": "Supply maximum"
+      },
+      "max_step": {
+        "name": "Max change per hour"
+      },
+      "w_move": {
+        "name": "Smoothing weight"
+      },
+      "w_cost": {
+        "name": "Energy / price weight"
+      }
     },
     "switch": {
-      "control_active": { "name": "Control active" }
+      "control_active": {
+        "name": "Control active"
+      }
     },
     "button": {
-      "retrain": { "name": "Retrain model" },
-      "recalculate": { "name": "Recalculate now" }
+      "retrain": {
+        "name": "Retrain model"
+      },
+      "recalculate": {
+        "name": "Recalculate now"
+      }
     }
   }
 }

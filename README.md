@@ -56,90 +56,89 @@ Then: **Settings → Devices & services → Add integration → MPC Floor Heatin
   covers 10 days). At least 3 days of data, better 2 to 4 weeks.
 * A measured **supply temperature** of the circuit (after the mixing valve).
 * A way to influence the supply set point (see control modes).
-* Optional: a `weather` entity with an **hourly** forecast, a price sensor.
+* Optional: a `weather` entity with an **hourly** forecast (only those are offered), a price
+  sensor, e.g. from the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot).
 * Temperatures in °C.
 
 ## Setup
 
 **Step 1, measurements:** room sensors of the circuit (the mean is controlled), measured supply
 temperature, outdoor temperature (a median of several sensors is ideal), weather entity, price sensor.
+Only temperature sensors are offered. For the rooms, the list is narrowed to indoor thermometers
+and all of them are preselected; remove the rooms this circuit does not heat.
 
 The price sensor needs a list of hourly prices in an attribute. Detected automatically:
 EPEX Spot (`data`: `start_time`/`price_per_kwh`), Nord Pool (`raw_today`/`raw_tomorrow`:
 `start`/`value`), Tibber-style (`startsAt`/`total`) and similar.
 
-**Step 2, actuator:**
+**Step 2, set point output.** Three ways, the next form only asks for what the chosen way needs:
 
-| Control mode | Target entity | When to use |
+| Mode | What happens | Next form |
 |---|---|---|
-| **Offset** (recommended) | the `number` that shifts your heating curve | Your controller has a heating curve with an offset. The MPC writes `offset = MPC set point − (effective set point − current offset)`. If Home Assistant stops, the curve keeps running with the last offset. Needs the *effective set point sensor* (curve + offset). |
-| **Absolute (number)** | `number` / `input_number` | The controller takes a supply set point directly. |
-| **Climate** | `climate` entity of the supply controller | A climate entity whose target temperature is the supply set point. |
+| **Own set point sensor** (default) | The integration creates the sensor *Supply set point output*. Your heating controller reads it, e.g. with an ESPHome `homeassistant` sensor. It only has a value while control is active and the model is trustworthy; otherwise it is `unavailable` and the controller keeps its own heating curve. | none |
+| **Climate entity** | The set point is written to the target temperature of a climate entity every hour. | climate entity |
+| **Number entity** | The set point is written to a `number` / `input_number` every hour. Entities whose maximum is below *Supply minimum* (e.g. an offset) are refused. | number entity |
 
-*Enable entity* (optional): control only while this entity is `on` / `heat` (e.g. an operating mode
-select). Anything `off`, `cool`, `unavailable` pauses the controller.
+The integration creates its own switch **Control active**; nothing has to be set up for that. It
+starts switched off: the plan is calculated and shown, but nothing is sent. Compare it with your
+heating curve for a few days, then switch it on.
 
-After setup the integration runs in **shadow mode**: it calculates and shows the plan but writes
-nothing. Compare its set point with your heating curve for a few days, then turn on
-**Control active**.
+In the options you can additionally pick a *heating mode condition* (e.g. the operating mode of the
+heating): while it is `off`/`cool`, control pauses automatically.
+
+### Learning
+
+With existing recorder history the model is ready right after setup. Without enough history the
+status is *Learning model* and the sensor *Learning progress* counts up to 100 % (7 days of usable
+hourly data and a 12 h prediction error below 0.5 K). Until then nothing is sent, and the model is
+retrained every hour instead of every night.
 
 ## Entities
 
 | Entity | Meaning |
 |---|---|
-| Supply set point | Set point for the current hour. Attribute `plan`: hourly plan of supply, predicted room temperature, outdoor and price for the whole horizon. |
+| Supply set point output | Only in the sensor mode: the set point for the heating controller, `unavailable` while control is off. |
+| Supply set point calculated | Always: the optimal set point for this hour. Attribute `plan`: hourly plan of supply, predicted room temperature, outdoor and price for the whole horizon. |
 | Room temperature mean | Mean of the room sensors right now. |
 | Room forecast in 6 h | Predicted room temperature (attributes: in 12 h, min/max next 24 h). |
-| Status | `shadow`, `active`, `paused`, `no_model`, `input_missing`, `write_failed`. |
+| Status | Learning model · Ready, control off · Control active · Paused, no heating mode · Measurement missing · Transmission failed |
+| Learning progress | 0 to 100 %, see above. |
 | Comfort minimum / maximum | Comfort band of the room mean. |
 | Supply minimum / maximum | Limits of the supply set point. |
-| Max change per hour | Rate limit of the written set point. |
+| Max change per hour | Rate limit of the set point. |
 | Smoothing weight | Higher = calmer supply temperature, slower reaction. |
 | Energy / price weight | 0 = comfort only. Higher = use the comfort band to save energy and move heat into cheap hours. Start with 0.2 to 1. |
-| Control active | Off = shadow mode. Turning it off resets the offset (offset mode). |
+| Control active | Switches the output on and off. |
 | Retrain model / Recalculate now | Buttons. |
 | Model dead time, screed / room time constant, model error, model trained | Diagnostics. A model error (12 h RMSE) below 0.3 K is good. |
 
 The integration runs every hour at hh:07 and after every settings change.
 Diagnostics (device page → ⋮ → Download diagnostics) contain the model and the full last plan.
 
-## Watchdog in the heating controller (recommended)
-
-Home Assistant does not unload integrations when it shuts down, so after a crash the last value
-stays in place. The set point is written **every hour, even when unchanged**, so the heating
-controller can treat it as a heartbeat. ESPHome example for the offset mode:
+## Reading the set point in ESPHome (sensor mode)
 
 ```yaml
-globals:
-  - id: offset_last_set
-    type: uint32_t
-    initial_value: "0"
-
-number:
-  - platform: template
-    id: fbh_offset
-    name: "FBH Vorlauf Heat Temperatur Offset"
-    min_value: -5
-    max_value: 10
-    step: 0.1            # finer than 1 K lets the MPC act precisely
-    optimistic: true
-    restore_value: true
-    set_action:
-      - lambda: "id(offset_last_set) = millis();"
-
-interval:
-  - interval: 5min
-    then:
-      - if:
-          condition:
-            lambda: |-
-              return id(fbh_offset).state != 0 &&
-                     (millis() - id(offset_last_set)) > 3UL * 3600UL * 1000UL;
-          then:
-            - number.set:
-                id: fbh_offset
-                value: 0
+sensor:
+  - platform: homeassistant
+    id: mpc_supply_setpoint
+    entity_id: sensor.fbh_mpc_supply_set_point_output   # adjust to your entity id
 ```
+
+Where your firmware computes the supply set point from the heating curve:
+
+```cpp
+float setpoint = curve_setpoint;               // your existing heating curve
+if (global_api_server->is_connected() && !std::isnan(id(mpc_supply_setpoint).state)) {
+  setpoint = id(mpc_supply_setpoint).state;    // MPC takes over while it delivers a value
+}
+```
+
+If Home Assistant stops, the API disconnects; if control is switched off or the model is not
+trustworthy, the sensor is `unavailable` (NaN). In both cases the heating curve is used again.
+
+In the climate and number modes the set point is written every hour, even when unchanged, so the
+heating controller can treat it as a heartbeat and fall back to its own curve after ~3 hours of
+silence.
 
 ## Dashboard
 
@@ -156,12 +155,12 @@ yaxis:
   - id: room
     opposite: true
 series:
-  - entity: sensor.fbh_mpc_supply_set_point
+  - entity: sensor.fbh_mpc_supply_set_point_calculated
     name: Supply plan
     yaxis_id: supply
     data_generator: |
       return entity.attributes.plan.map(p => [new Date(p.time).getTime(), p.supply]);
-  - entity: sensor.fbh_mpc_supply_set_point
+  - entity: sensor.fbh_mpc_supply_set_point_calculated
     name: Room forecast
     yaxis_id: room
     data_generator: |

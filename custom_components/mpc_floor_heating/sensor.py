@@ -13,12 +13,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import STATUSES
+from .const import CONF_CONTROL_MODE, MAX_CREDIBLE_ERROR, MIN_CREDIBLE_HOURS, MODE_SENSOR, STATUSES
 from .coordinator import MpcConfigEntry, MpcCoordinator
 from .entity import MpcEntity
 
@@ -106,6 +106,8 @@ class MpcSensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[MpcCoordinator], Any]
     attrs_fn: Callable[[MpcCoordinator], dict[str, Any]] | None = None
+    available_fn: Callable[[MpcCoordinator], bool] | None = None
+    sensor_mode_only: bool = False
 
 
 TEMP = {
@@ -115,7 +117,27 @@ TEMP = {
     "suggested_display_precision": 1,
 }
 
+def _learning_attrs(c: MpcCoordinator) -> dict[str, Any]:
+    m = c.model
+    return {
+        "ready": c.model_credible,
+        "usable_hours": m.rows if m else 0,
+        "required_hours": MIN_CREDIBLE_HOURS,
+        "model_error": round(m.rmse_multi, 3) if m else None,
+        "max_model_error": MAX_CREDIBLE_ERROR,
+        "last_error": c.model_error,
+    }
+
+
 SENSORS: tuple[MpcSensorDescription, ...] = (
+    MpcSensorDescription(
+        key="supply_output",
+        icon="mdi:export",
+        value_fn=lambda c: c.data.output if c.data else None,
+        available_fn=lambda c: c.data is not None and c.data.output is not None,
+        sensor_mode_only=True,
+        **TEMP,
+    ),
     MpcSensorDescription(key="supply_setpoint", icon="mdi:thermometer-water", value_fn=_supply, attrs_fn=_supply_attrs, **TEMP),
     MpcSensorDescription(
         key="room_average",
@@ -132,6 +154,13 @@ SENSORS: tuple[MpcSensorDescription, ...] = (
         icon="mdi:state-machine",
         value_fn=lambda c: c.data.status if c.data else None,
         attrs_fn=lambda c: {"message": c.data.message if c.data else None},
+    ),
+    MpcSensorDescription(
+        key="learning_progress",
+        icon="mdi:school-outline",
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda c: c.learning_progress,
+        attrs_fn=_learning_attrs,
     ),
     MpcSensorDescription(
         key="model_dead_time",
@@ -178,7 +207,10 @@ async def async_setup_entry(
 ) -> None:
     """Add sensors."""
     coordinator = entry.runtime_data
-    async_add_entities(MpcSensor(coordinator, desc) for desc in SENSORS)
+    sensor_mode = coordinator.cfg.get(CONF_CONTROL_MODE, MODE_SENSOR) == MODE_SENSOR
+    async_add_entities(
+        MpcSensor(coordinator, desc) for desc in SENSORS if sensor_mode or not desc.sensor_mode_only
+    )
 
 
 class MpcSensor(MpcEntity, SensorEntity):
@@ -190,6 +222,12 @@ class MpcSensor(MpcEntity, SensorEntity):
     def __init__(self, coordinator: MpcCoordinator, description: MpcSensorDescription) -> None:
         super().__init__(coordinator, description.key)
         self.entity_description = description
+
+    @property
+    def available(self) -> bool:
+        if self.entity_description.available_fn is not None:
+            return super().available and self.entity_description.available_fn(self.coordinator)
+        return super().available
 
     @property
     def native_value(self) -> Any:
