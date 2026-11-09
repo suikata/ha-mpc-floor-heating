@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -56,7 +57,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .model import ModelError, ThermalModel, identify
-from .mpc import MpcResult, MpcSettings, solve
+from .mpc import MpcResult, MpcSettings, Room, solve
 from .timeseries import (
     extract_price_points,
     fill_edges,
@@ -80,6 +81,8 @@ class MpcData:
     status: str
     result: MpcResult | None = None
     room_now: float | None = None
+    rooms: list[dict[str, Any]] = field(default_factory=list)
+    shortfall_now: float | None = None  # most negative (room - set point) of active rooms
     outdoor_plan: list[float] = field(default_factory=list)
     price_plan: list[float | None] = field(default_factory=list)
     slot_starts: list[datetime] = field(default_factory=list)
@@ -120,6 +123,89 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         self._warm_start: np.ndarray | None = None
         self._last_written: float | None = None
         self._train_requested = False
+        # room entity -> entity whose statistics describe its temperature
+        self._room_history: dict[str, str | None] = {}
+        self._resolve_rooms()
+
+    # ------------------------------------------------------------------ rooms
+    @callback
+    def _resolve_rooms(self) -> None:
+        """Map thermostats to their temperature sensors, drop duplicates.
+
+        A climate entity has no long-term statistics of its room temperature,
+        so training uses the temperature sensor of the same device. A sensor
+        that belongs to a device whose thermostat is selected as well is
+        skipped, so the room is not counted twice.
+        """
+        ent_reg = er.async_get(self.hass)
+        selected = list(dict.fromkeys(self.cfg[CONF_ROOM_SENSORS]))
+        climate_devices = {
+            entry.device_id
+            for eid in selected
+            if eid.startswith("climate.") and (entry := ent_reg.async_get(eid)) and entry.device_id
+        }
+        mapping: dict[str, str | None] = {}
+        for eid in selected:
+            entry = ent_reg.async_get(eid)
+            if eid.startswith("climate."):
+                mapping[eid] = self._device_temperature_sensor(ent_reg, entry)
+                if mapping[eid] is None:
+                    _LOGGER.warning("No temperature sensor found on the device of %s, it is not used for training", eid)
+            elif entry is not None and entry.device_id in climate_devices:
+                continue
+            else:
+                mapping[eid] = eid
+        self._room_history = mapping
+
+    @staticmethod
+    def _device_temperature_sensor(ent_reg: er.EntityRegistry, entry: er.RegistryEntry | None) -> str | None:
+        if entry is None or entry.device_id is None:
+            return None
+        skip = ("taupunkt", "dew", "frost", "feels", "gefühlt", "gefuhlt", "apparent", "spreizung", "soll", "target")
+        found = []
+        for ent in er.async_entries_for_device(ent_reg, entry.device_id):
+            if ent.domain != "sensor":
+                continue
+            if (ent.device_class or ent.original_device_class) != "temperature":
+                continue
+            text = f"{ent.entity_id} {ent.original_name or ''} {ent.name or ''}".lower()
+            if any(word in text for word in skip):
+                continue
+            found.append(ent.entity_id)
+        found.sort(key=lambda e: ("temperat" not in e, e))
+        return found[0] if found else None
+
+    def room_states(self) -> list[dict[str, Any]]:
+        """Current temperature and set point of every room."""
+        out = []
+        for eid in self._room_history:
+            state = self.hass.states.get(eid)
+            name = state.name if state else eid
+            if eid.startswith("climate."):
+                temp = to_float(state.attributes.get("current_temperature")) if state else None
+                setpoint = to_float(state.attributes.get("temperature")) if state else None
+                active = (
+                    state is not None
+                    and state.state not in ("off", STATE_UNAVAILABLE, STATE_UNKNOWN)
+                    and setpoint is not None
+                    and setpoint >= 10.0
+                )
+            else:
+                temp = _state_float(state)
+                setpoint = float(self.settings.default_setpoint)
+                active = True
+            out.append(
+                {
+                    "entity_id": eid,
+                    "name": name,
+                    "temperature": temp,
+                    "setpoint": setpoint,
+                    "deviation": None if temp is None or setpoint is None else round(temp - setpoint, 2),
+                    "active": bool(active and temp is not None),
+                    "in_model": self._room_history.get(eid) is not None,
+                }
+            )
+        return out
 
     # ------------------------------------------------------------------ setup
     async def async_load(self) -> None:
@@ -149,7 +235,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
 
     def _inputs_fingerprint(self) -> list[Any]:
         return [
-            sorted(self.cfg[CONF_ROOM_SENSORS]),
+            sorted(e for e in self._room_history.values() if e),
             self.cfg[CONF_SUPPLY_SENSOR],
             self.cfg[CONF_OUTDOOR_SENSOR],
         ]
@@ -236,7 +322,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
 
     async def _async_dataset(self, start: datetime, hours: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Room mean, supply and outdoor hourly series."""
-        rooms: list[str] = list(self.cfg[CONF_ROOM_SENSORS])
+        rooms = sorted({e for e in self._room_history.values() if e})
         supply = self.cfg[CONF_SUPPLY_SENSOR]
         outdoor = self.cfg[CONF_OUTDOOR_SENSOR]
         data = await self._async_hourly([*rooms, supply, outdoor], start, hours)
@@ -303,12 +389,10 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         )
 
     # ------------------------------------------------------------------ helpers
-    def _current_room(self) -> float | None:
-        vals = [
-            v
-            for eid in self.cfg[CONF_ROOM_SENSORS]
-            if (v := _state_float(self.hass.states.get(eid))) is not None
-        ]
+    @staticmethod
+    def _room_mean(rooms: list[dict[str, Any]]) -> float | None:
+        """Mean over the rooms the model was trained on (same set as history)."""
+        vals = [r["temperature"] for r in rooms if r["in_model"] and r["temperature"] is not None]
         return float(np.mean(vals)) if vals else None
 
     def _control_allowed(self) -> bool:
@@ -357,7 +441,13 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         except HomeAssistantError as err:
             raise UpdateFailed(f"Reading the recorder failed: {err}") from err
 
-        room_now = self._current_room()
+        rooms = self.room_states()
+        room_now = self._room_mean(rooms)
+        active = [r for r in rooms if r["active"]]
+        mpc_rooms = (
+            [Room(r["temperature"] - room_now, r["setpoint"]) for r in active] if room_now is not None else []
+        )
+        shortfall = min((r["deviation"] for r in active), default=None)
         supply_now = _state_float(self.hass.states.get(self.cfg[CONF_SUPPLY_SENSOR]))
         outdoor_now = _state_float(self.hass.states.get(self.cfg[CONF_OUTDOOR_SENSOR]))
         if room_now is None or (not np.isfinite(u_hist).any() and supply_now is None):
@@ -388,6 +478,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
                     price,
                     u_prev,
                     self._warm_start,
+                    mpc_rooms or None,
                 )
             )
         except (ValueError, np.linalg.LinAlgError) as err:
@@ -399,6 +490,8 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
             status=STATUS_STANDBY,
             result=result,
             room_now=room_now,
+            rooms=rooms,
+            shortfall_now=shortfall,
             outdoor_plan=[float(x) for x in outdoor],
             price_plan=(
                 [None] * horizon

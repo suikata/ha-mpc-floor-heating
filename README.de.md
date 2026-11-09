@@ -12,8 +12,8 @@ Kälteeinbrüchen hinkt er hinterher. Diese Integration
    (Raumtemperaturen, gemessener Vorlauf, Außentemperatur),
 2. **schaut 36 Stunden voraus** mit der stündlichen Wettervorhersage (optional auch mit einer
    Strompreis-Prognose),
-3. **berechnet den Vorlauf-Fahrplan**, der die Räume mit möglichst wenig und möglichst ruhigem
-   Heizen im Komfortband hält,
+3. **berechnet den Vorlauf-Fahrplan**, der jeden Raum auf den Sollwert seines eigenen Thermostats
+   bringt, mit möglichst wenig und möglichst ruhigem Heizen,
 4. und **gibt jede Stunde die erste Stunde dieses Plans** an deine Heizungssteuerung weiter.
 
 Eingerichtet und eingestellt wird alles in der Oberfläche. Kein YAML, keine App, keine Cloud.
@@ -33,10 +33,16 @@ Methode der kleinsten Quadrate. Gewählt wird der Kandidat mit dem kleinsten
 **12-Stunden-Prognosefehler**, denn genau darauf verlässt sich der Regler. Das Modell wird jede
 Nacht um 03:17 aus den letzten 30 Tagen neu gelernt.
 
-Der Regler minimiert über den Prognosehorizont
+Das Modell beschreibt den Mittelwert aller Räume. Jeder Raum folgt diesem Mittelwert mit seinem
+aktuellen Abstand (ein Raum, der 0,6 K unter dem Mittel liegt, bleibt etwa 0,6 K darunter). Der
+Regler minimiert über den Prognosehorizont
 
-* quadrierte Verletzungen des Komfortbands (starkes Gewicht),
-* den Abstand zur Bandmitte (schwaches Gewicht),
+* für jeden Raum die quadrierte Unterschreitung von *eigenem Sollwert − Toleranz* (starkes
+  Gewicht; der kälteste Raum zählt am meisten),
+* einen Mittelwert über *mittlerem Sollwert + Toleranz* (Räume über ihrem Sollwert drosseln mit
+  ihren eigenen Ventilen, daher wird nach oben nur der Mittelwert begrenzt),
+* den Abstand zu dem Niveau, bei dem der bedürftigste Raum gerade seinen Sollwert erreicht
+  (schwaches Gewicht),
 * Änderungen der Vorlauftemperatur („Gewicht Ruhe“),
 * optional `Preis × Vorlauftemperatur` („Gewicht Energie/Preis“),
 
@@ -66,11 +72,15 @@ Danach: **Einstellungen → Geräte & Dienste → Integration hinzufügen → MP
 
 ## Einrichtung
 
-**Schritt 1, Messwerte:** Raumsensoren des Heizkreises (geregelt wird auf ihren Mittelwert),
-gemessener Vorlauf, Außentemperatur (ideal: Median mehrerer Sensoren), Wettervorhersage,
-Strompreis-Sensor. Angeboten werden nur Temperatursensoren. Bei den Räumen ist die Liste auf
-Innenraum-Thermometer eingeschränkt und alle sind vorausgewählt; entferne die Räume, die dieser
-Kreis nicht beheizt.
+**Schritt 1, Messwerte:** die Räume des Heizkreises, gemessener Vorlauf, Außentemperatur (ideal:
+Median mehrerer Sensoren), Wettervorhersage, Strompreis-Sensor.
+
+Räume sind vorzugsweise **Raumthermostate** (Climate-Entitäten): Verwendet werden ihre Ist- und
+ihre Solltemperatur, auch wenn ein Wochenprogramm umschaltet. Alle Thermostate sind
+vorausgewählt; entferne die Räume, die dieser Kreis nicht beheizt. Ausgeschaltete Räume (Sollwert
+unter 10 °C) werden ignoriert. Zum Lernen nimmt die Integration den Temperatursensor desselben
+Geräts, weil Climate-Entitäten keine Langzeitstatistik haben. Räume mit nur einem Thermometer
+lassen sich ebenfalls hinzufügen; sie verwenden den *Sollwert für Räume ohne Thermostat*.
 
 Der Strompreis-Sensor braucht eine Liste stündlicher Preise in einem Attribut. Automatisch erkannt
 werden EPEX Spot (`data`: `start_time`/`price_per_kwh`), Nord Pool (`raw_today`/`raw_tomorrow`:
@@ -105,15 +115,17 @@ nichts ausgegeben, und das Modell wird stündlich statt nächtlich neu gelernt.
 |---|---|
 | Vorlauf Sollwert Ausgang | Nur bei „Eigener Sollwert-Sensor“: der Sollwert für die Heizungssteuerung, `unavailable` solange die Regelung aus ist. |
 | Vorlauf Sollwert berechnet | Immer: der optimale Sollwert für diese Stunde. Attribut `plan`: stündlicher Plan aus Vorlauf, vorhergesagter Raumtemperatur, Außentemperatur und Preis über den ganzen Horizont. |
-| Raumtemperatur Mittel | Aktueller Mittelwert der Raumsensoren. |
-| Raumtemperatur Prognose 6 h | Vorhergesagte Raumtemperatur (Attribute: in 12 h, Min/Max der nächsten 24 h). |
+| Raumtemperatur Mittel | Aktueller Mittelwert der Räume. |
+| Größte Unterschreitung des Sollwerts | Kleinster Wert von *Raum − Sollwert* der aktiven Räume. Attribut `rooms`: jeder Raum mit Temperatur, Sollwert und Abweichung. |
+| Raumtemperatur Prognose 6 h | Vorhergesagter Raummittelwert (Attribute: in 12 h, Min/Max der nächsten 24 h, größte Unterschreitung in 6 h und über 24 h). |
 | Status | Modell wird eingelernt · Bereit, Regelung aus · Regelung aktiv · Pausiert, kein Heizbetrieb · Messwert fehlt · Übertragung fehlgeschlagen |
 | Lernfortschritt | 0 bis 100 %, siehe oben. |
-| Komfort Minimum / Maximum | Komfortband für den Raummittelwert. |
+| Toleranz um den Raum-Sollwert | Wie weit ein Raum unter seinen Sollwert fallen darf, bevor der Regler stark reagiert (Standard 0,5 K). |
+| Sollwert für Räume ohne Thermostat | Für Räume, die nur ein Thermometer haben (Standard 22 °C). |
 | Vorlauf Minimum / Maximum | Grenzen des Vorlauf-Sollwerts. |
 | Max. Änderung pro Stunde | Begrenzung der Änderungsrate. |
 | Gewicht Ruhe | Höher = ruhigerer Vorlauf, langsamere Reaktion. |
-| Gewicht Energie/Preis | 0 = nur Komfort. Höher = Komfortband zum Sparen nutzen und Wärme in günstige Stunden verschieben. Starte mit 0,2 bis 1. |
+| Gewicht Energie/Preis | 0 = nur Komfort. Höher = Toleranz zum Sparen nutzen und Wärme in günstige Stunden verschieben. Starte mit 0,2 bis 1. |
 | Regelung aktiv | Schaltet die Ausgabe ein und aus. |
 | Modell neu lernen / Jetzt berechnen | Tasten. |
 | Modell Totzeit, Zeitkonstante Estrich / Raum, Modell Fehler, Modell gelernt | Diagnose. Ein Modellfehler (12-h-RMSE) unter 0,3 K ist gut. |

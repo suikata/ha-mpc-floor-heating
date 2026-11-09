@@ -43,6 +43,10 @@ class State:
         self.last_updated = last_updated or NOW
         self.last_changed = self.last_updated
 
+    @property
+    def name(self):
+        return self.attributes.get("friendly_name", self.entity_id)
+
 
 class ConfigEntry(Generic[_T]):
     def __init__(self, options: dict):
@@ -110,6 +114,14 @@ def _install_stubs(stats: dict[str, list[dict]]):
     _module("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
     _module("homeassistant.helpers")
     _module("homeassistant.helpers.event", async_track_time_change=lambda *a, **k: (lambda: None))
+    _module(
+        "homeassistant.helpers.entity_registry",
+        async_get=lambda hass: REGISTRY,
+        async_entries_for_device=lambda reg, device_id: [e for e in reg.entries.values() if e.device_id == device_id],
+        EntityRegistry=FakeRegistry,
+        RegistryEntry=RegEntry,
+    )
+    sys.modules["homeassistant.helpers"].entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
     _module("homeassistant.helpers.storage", Store=Store)
     _module("homeassistant.helpers.update_coordinator", DataUpdateCoordinator=DataUpdateCoordinator, UpdateFailed=UpdateFailed)
     dt = _module(
@@ -120,6 +132,32 @@ def _install_stubs(stats: dict[str, list[dict]]):
         get_default_time_zone=lambda: UTC,
     )
     _module("homeassistant.util", dt=dt)
+
+
+class RegEntry:
+    def __init__(self, entity_id, device_id=None, device_class=None, original_name=None):
+        self.entity_id = entity_id
+        self.domain = entity_id.split(".", 1)[0]
+        self.device_id = device_id
+        self.device_class = None
+        self.original_device_class = device_class
+        self.original_name = original_name
+        self.name = None
+
+
+class FakeRegistry:
+    def __init__(self):
+        self.entries: dict[str, RegEntry] = {}
+
+    def add(self, *args, **kwargs):
+        e = RegEntry(*args, **kwargs)
+        self.entries[e.entity_id] = e
+
+    def async_get(self, entity_id):
+        return self.entries.get(entity_id)
+
+
+REGISTRY = FakeRegistry()
 
 
 class FakeStates:
@@ -316,5 +354,45 @@ def test_number_mode_refuses_offset_like_target(setup):
         await coordinator.async_refresh()
         assert coordinator.data.status == const.STATUS_WRITE_FAILED
         assert not any(c[1] == "set_value" for c in hass.services.calls)
+
+    asyncio.run(run())
+
+
+def test_thermostats_use_their_set_points(setup):
+    hass, coordinator, const = setup
+    REGISTRY.entries.clear()
+    REGISTRY.add("climate.room_a", device_id="dev_a")
+    REGISTRY.add("sensor.room_a", device_id="dev_a", device_class="temperature", original_name="Temperatur")
+    REGISTRY.add("sensor.room_a_dew", device_id="dev_a", device_class="temperature", original_name="Taupunkt")
+    REGISTRY.add("climate.room_b", device_id="dev_b")
+    REGISTRY.add("sensor.room_b", device_id="dev_b", device_class="temperature", original_name="Temperatur")
+    REGISTRY.add("climate.wc", device_id="dev_wc")
+    hass.states.set("climate.room_a", "auto", {"current_temperature": 21.9, "temperature": 22.5})
+    hass.states.set("climate.room_b", "auto", {"current_temperature": 22.3, "temperature": 22.0})
+    hass.states.set("climate.wc", "heat", {"current_temperature": 17.0, "temperature": 5.0})
+    # thermostat and its own sensor both selected: the sensor must not count twice
+    coordinator.cfg[const.CONF_ROOM_SENSORS] = ["climate.room_a", "climate.room_b", "climate.wc", "sensor.room_b"]
+    coordinator._resolve_rooms()
+    assert coordinator._room_history == {
+        "climate.room_a": "sensor.room_a",
+        "climate.room_b": "sensor.room_b",
+        "climate.wc": None,
+    }
+
+    async def run():
+        await coordinator.async_refresh()
+        data = coordinator.data
+        assert data.status == const.STATUS_STANDBY, data.message
+        assert data.room_now == pytest.approx(22.1)
+        assert data.shortfall_now == pytest.approx(-0.6)  # room_a 0.6 K below its set point
+        wc = next(r for r in data.rooms if r["entity_id"] == "climate.wc")
+        assert wc["active"] is False and wc["in_model"] is False
+        assert len(data.result.worst_room) == 36
+
+        # same house, but everybody content: the plan must be lower
+        hass.states.set("climate.room_a", "auto", {"current_temperature": 21.9, "temperature": 21.5})
+        coordinator._warm_start = None
+        await coordinator.async_refresh()
+        assert coordinator.data.result.supply < data.result.supply
 
     asyncio.run(run())

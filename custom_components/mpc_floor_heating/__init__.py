@@ -6,7 +6,9 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_call_later
 
-from .const import CONF_CONTROL_MODE, CONF_TARGET, CONTROL_MODES, MODE_SENSOR
+from homeassistant.helpers import entity_registry as er
+
+from .const import CONF_CONTROL_MODE, CONF_ROOM_SENSORS, CONF_TARGET, CONTROL_MODES, MODE_SENSOR
 from .coordinator import MpcConfigEntry, MpcCoordinator
 
 PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
@@ -14,6 +16,7 @@ PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool:
     """Set up from a config entry."""
+    _remove_stale_entities(hass, entry)
     coordinator = MpcCoordinator(hass, entry)
     await coordinator.async_load()
     await coordinator.async_config_entry_first_refresh()
@@ -32,6 +35,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool:
     return True
 
 
+STALE_KEYS = ("comfort_min", "comfort_max")  # replaced by per-room set points in 0.3
+
+
+def _remove_stale_entities(hass: HomeAssistant, entry: MpcConfigEntry) -> None:
+    ent_reg = er.async_get(hass)
+    for key in STALE_KEYS:
+        for domain in ("number",):
+            if eid := ent_reg.async_get_entity_id(domain, "mpc_floor_heating", f"{entry.entry_id}_{key}"):
+                ent_reg.async_remove(eid)
+
+
 async def _async_update_listener(hass: HomeAssistant, entry: MpcConfigEntry) -> None:
     """Reload after the options changed."""
     await hass.config_entries.async_reload(entry.entry_id)
@@ -43,7 +57,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> bool:
-    """Version 1 -> 2: the offset mode was replaced by the set point sensor."""
+    """1 -> 2: offset mode replaced by the set point sensor. 2 -> 3: thermostats as rooms."""
     if entry.version == 1:
         options = dict(entry.options)
         for key in ("setpoint_sensor", "offset_reset"):
@@ -52,4 +66,21 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MpcConfigEntry) -> boo
             options[CONF_CONTROL_MODE] = MODE_SENSOR
             options.pop(CONF_TARGET, None)
         hass.config_entries.async_update_entry(entry, options=options, version=2)
+    if entry.version == 2:
+        # 0.3: rooms are preferably thermostats; swap each temperature sensor for
+        # the thermostat on the same device so its set point is used
+        options = dict(entry.options)
+        ent_reg = er.async_get(hass)
+        rooms = []
+        for eid in options.get(CONF_ROOM_SENSORS, []):
+            entry_ = ent_reg.async_get(eid)
+            swap = None
+            if entry_ is not None and entry_.device_id and eid.startswith("sensor."):
+                swap = next(
+                    (e.entity_id for e in er.async_entries_for_device(ent_reg, entry_.device_id) if e.domain == "climate"),
+                    None,
+                )
+            rooms.append(swap or eid)
+        options[CONF_ROOM_SENSORS] = list(dict.fromkeys(rooms))
+        hass.config_entries.async_update_entry(entry, options=options, version=3)
     return True

@@ -43,8 +43,18 @@ def _temp(key: str, field: str, low: float, high: float, step: float = 0.1, icon
 
 
 NUMBERS: tuple[MpcNumberDescription, ...] = (
-    _temp("comfort_min", "comfort_min", 15.0, 26.0, icon="mdi:thermometer-chevron-down"),
-    _temp("comfort_max", "comfort_max", 15.0, 28.0, icon="mdi:thermometer-chevron-up"),
+    MpcNumberDescription(
+        key="tolerance",
+        field="tolerance",
+        icon="mdi:plus-minus-variant",
+        native_min_value=0.1,
+        native_max_value=3.0,
+        native_step=0.1,
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    _temp("default_setpoint", "default_setpoint", 15.0, 26.0, 0.5, icon="mdi:home-thermometer"),
     _temp("supply_min", "supply_min", 15.0, 45.0, 0.5, icon="mdi:water-thermometer-outline"),
     _temp("supply_max", "supply_max", 20.0, 55.0, 0.5, icon="mdi:water-thermometer"),
     MpcNumberDescription(

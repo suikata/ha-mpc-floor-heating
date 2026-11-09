@@ -71,7 +71,31 @@ def _room_forecast_attrs(c: MpcCoordinator) -> dict[str, Any]:
     if not res:
         return {}
     window = res.plan_room[:24]
-    return {"min_24h": _r(min(window)), "max_24h": _r(max(window)), "in_12h": _r(res.plan_room[11]) if len(res.plan_room) > 11 else None}
+    worst = res.worst_room
+    return {
+        "min_24h": _r(min(window)),
+        "max_24h": _r(max(window)),
+        "in_12h": _r(res.plan_room[11]) if len(res.plan_room) > 11 else None,
+        "shortfall_6h": _r(worst[5]) if len(worst) > 5 else None,
+        "shortfall_24h": _r(min(worst[:24])) if worst else None,
+    }
+
+
+def _rooms_attrs(c: MpcCoordinator) -> dict[str, Any]:
+    if not c.data:
+        return {}
+    return {
+        "rooms": [
+            {
+                "name": r["name"],
+                "temperature": _r(r["temperature"], 1),
+                "setpoint": _r(r["setpoint"], 1),
+                "deviation": r["deviation"],
+                "active": r["active"],
+            }
+            for r in c.data.rooms
+        ]
+    }
 
 
 def _model_value(fn: Callable[[Any], Any]) -> Callable[[MpcCoordinator], Any]:
@@ -143,6 +167,15 @@ SENSORS: tuple[MpcSensorDescription, ...] = (
         key="room_average",
         value_fn=lambda c: _r(c.data.room_now) if c.data else None,
         **TEMP,
+    ),
+    MpcSensorDescription(
+        key="largest_shortfall",
+        icon="mdi:thermometer-alert",
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda c: _r(c.data.shortfall_now) if c.data else None,
+        attrs_fn=_rooms_attrs,
     ),
     MpcSensorDescription(
         key="room_forecast_6h", icon="mdi:home-thermometer-outline", value_fn=_room_forecast, attrs_fn=_room_forecast_attrs, **TEMP

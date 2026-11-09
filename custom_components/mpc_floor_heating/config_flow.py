@@ -110,6 +110,42 @@ def indoor_temperature_sensors(hass: HomeAssistant) -> list[str]:
     return sorted(found)
 
 
+def _excluded(hass: HomeAssistant, entity_id: str, friendly_name: str | None) -> bool:
+    """Outdoor or technical by id, name or area."""
+    ent_reg = er.async_get(hass)
+    entry = ent_reg.async_get(entity_id)
+    if entry is not None and (entry.platform == DOMAIN or entry.disabled_by or entry.hidden_by):
+        return True
+    area_id = entry.area_id if entry else None
+    if area_id is None and entry is not None and entry.device_id:
+        device = dr.async_get(hass).async_get(entry.device_id)
+        area_id = device.area_id if device else None
+    area = ar.async_get(hass).async_get_area(area_id) if area_id else None
+    tokens = _tokens(entity_id, friendly_name)
+    area_tokens = _tokens(area.name if area else None)
+    return (
+        _matches(tokens + area_tokens, OUTDOOR_WORDS)
+        or _matches(tokens, TECHNICAL_WORDS)
+        or _matches(area_tokens, TECHNICAL_AREA_WORDS)
+    )
+
+
+def room_thermostats(hass: HomeAssistant) -> list[str]:
+    """Climate entities that look like room thermostats (room temperature + set point)."""
+    found = []
+    for state in hass.states.async_all("climate"):
+        attrs = state.attributes
+        if attrs.get("current_temperature") is None or "temperature" not in attrs:
+            continue
+        max_temp = attrs.get("max_temp")
+        if isinstance(max_temp, (int, float)) and max_temp > 35:  # supply or appliance controller
+            continue
+        if _excluded(hass, state.entity_id, attrs.get("friendly_name")):
+            continue
+        found.append(state.entity_id)
+    return sorted(found)
+
+
 PRICE_UNIT_RE = re.compile(r"/\s*[km]?wh\b", re.IGNORECASE)
 
 
@@ -134,7 +170,10 @@ def _price_selector(candidates: list[str]) -> EntitySelector:
 
 
 def _room_selector(candidates: list[str]) -> EntitySelector:
-    config = EntitySelectorConfig(domain="sensor", device_class="temperature", multiple=True)
+    config = EntitySelectorConfig(
+        filter=[{"domain": "climate"}, {"domain": "sensor", "device_class": "temperature"}],
+        multiple=True,
+    )
     if candidates:
         config["include_entities"] = candidates
     return EntitySelector(config)
@@ -190,14 +229,15 @@ def _normalise(data: dict[str, Any]) -> dict[str, Any]:
 class MpcConfigFlow(ConfigFlow, domain=DOMAIN):
     """Setup: measurements -> control mode -> (target entity)."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        candidates = indoor_temperature_sensors(self.hass)
+        thermostats = room_thermostats(self.hass)
+        candidates = sorted(set(thermostats) | set(indoor_temperature_sensors(self.hass)))
         if user_input is not None:
             if not user_input.get(CONF_ROOM_SENSORS):
                 errors[CONF_ROOM_SENSORS] = "rooms_required"
@@ -208,7 +248,10 @@ class MpcConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {vol.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector(), **_sensor_schema(candidates, prices)}
         )
-        suggested = user_input if user_input is not None else {CONF_ROOM_SENSORS: candidates}
+        # preselect the thermostats (their set points are used); thermometers
+        # only when there are no thermostats
+        preselect = thermostats or indoor_temperature_sensors(self.hass)
+        suggested = user_input if user_input is not None else {CONF_ROOM_SENSORS: preselect}
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(schema, suggested),
@@ -259,7 +302,7 @@ class MpcOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        candidates = indoor_temperature_sensors(self.hass)
+        candidates = sorted(set(room_thermostats(self.hass)) | set(indoor_temperature_sensors(self.hass)))
         current = dict(self.config_entry.options)
         # keep sensors chosen earlier selectable even if the heuristic skips them
         candidates = sorted(set(candidates) | set(current.get(CONF_ROOM_SENSORS, [])))

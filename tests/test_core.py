@@ -103,8 +103,8 @@ def test_mpc_holds_band_in_closed_loop():
         u_hist.append(res.supply)
         ys.append(y)
     ys = np.array(ys[48:])
-    assert ys.min() > settings.comfort_min - 0.25
-    assert ys.max() < settings.comfort_max + 0.25
+    assert ys.min() > settings.default_setpoint - settings.tolerance - 0.25
+    assert ys.max() < settings.default_setpoint + settings.tolerance + 0.25
 
 
 def test_mpc_shifts_heat_to_cheap_hours():

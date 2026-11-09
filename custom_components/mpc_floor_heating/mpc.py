@@ -32,8 +32,8 @@ from .model import ThermalModel
 class MpcSettings:
     """Tunable settings, all exposed as number entities in Home Assistant."""
 
-    comfort_min: float = 21.5
-    comfort_max: float = 22.5
+    tolerance: float = 0.5  # K a room may deviate from its set point
+    default_setpoint: float = 22.0  # for rooms without a thermostat
     supply_min: float = 22.0
     supply_max: float = 38.0
     max_step: float = 1.0  # K per hour applied to the first move
@@ -56,6 +56,15 @@ class MpcResult:
     iterations: int = 0
     cost: float = math.nan
     steady_state_supply: float = math.nan
+    worst_room: list[float] = field(default_factory=list)  # hours 1..H, largest shortfall
+
+
+@dataclass
+class Room:
+    """A room relative to the modelled mean temperature."""
+
+    offset: float  # room temperature minus the modelled mean, assumed to persist
+    setpoint: float
 
 
 def _fill_nan(arr: np.ndarray, what: str) -> np.ndarray:
@@ -86,6 +95,7 @@ def solve(
     price: np.ndarray | None = None,
     u_prev: float | None = None,
     warm_start: np.ndarray | None = None,
+    rooms: list[Room] | None = None,
     max_iter: int = 4000,
     tol: float = 1e-7,
 ) -> MpcResult:
@@ -95,6 +105,11 @@ def solve(
     outdoor: outdoor forecast for hours 0 .. H-1 (len >= horizon)
     price: optional price per hour 0 .. H-1, any unit (normalised to mean 1)
     u_prev: supply set point currently active (reference for move penalty)
+    rooms: rooms with their own set points. Each room follows the modelled
+        mean plus its current offset; the valves of rooms above their set
+        point throttle by themselves, so only shortfalls are penalised per
+        room, while the upper limit applies to the mean. Without rooms the
+        mean has to stay at default_setpoint +- tolerance.
     """
     horizon = int(settings.horizon)
     outdoor = _fill_nan(np.asarray(outdoor, dtype=float)[:horizon], "outdoor forecast")
@@ -121,9 +136,17 @@ def solve(
         y_j, _ = model.simulate(room_now, xf0, u_hist, block[:, j], outdoor)
         gain[:, j] = y_j[1:] - y_free
 
-    lo_y = float(settings.comfort_min)
-    hi_y = float(max(settings.comfort_max, lo_y))
-    ref = 0.5 * (lo_y + hi_y)
+    tol_k = max(0.0, float(settings.tolerance))
+    if not rooms:
+        rooms = [Room(0.0, float(settings.default_setpoint))]
+    offsets = np.array([r.offset for r in rooms], dtype=float)
+    floors = np.array([r.setpoint - tol_k for r in rooms], dtype=float) - offsets  # min mean per room
+    mean_sp = float(np.mean([r.setpoint for r in rooms])) - float(np.mean(offsets))
+    hi_y = mean_sp + tol_k
+    # aim at the level where the neediest room reaches its set point, but do
+    # not overheat the whole house for one room that cannot keep up
+    need = float(np.max(floors)) + tol_k
+    ref = min(need, hi_y)
 
     # move penalty on the full plan, including the step from u_prev
     diff = np.eye(horizon) - np.eye(horizon, k=-1)
@@ -149,24 +172,24 @@ def solve(
 
     def cost_and_grad(v: np.ndarray) -> tuple[float, np.ndarray]:
         y = y_free + gain @ v
-        below = np.maximum(0.0, lo_y - y)
+        below = np.maximum(0.0, floors[:, None] - y[None, :])  # rooms x hours
         above = np.maximum(0.0, y - hi_y)
         dev = y - ref
         mv = d_mat @ v + d_off
         cost = (
-            w_band * float(below @ below + above @ above)
+            w_band * float(np.sum(below * below) + above @ above)
             + w_ref * float(dev @ dev)
             + w_move * float(mv @ mv)
             + float(lin_cost @ v)
         )
-        dy = 2.0 * w_band * (above - below) + 2.0 * w_ref * dev
+        dy = 2.0 * w_band * (above - below.sum(axis=0)) + 2.0 * w_ref * dev
         grad = gain.T @ dy + 2.0 * w_move * (d_mat.T @ mv) + lin_cost
         return cost, grad
 
     # Lipschitz constant of the gradient
     sigma_g = np.linalg.norm(gain, 2) if gain.size else 0.0
     sigma_d = np.linalg.norm(d_mat, 2)
-    lipschitz = 2.0 * (w_band + w_ref) * sigma_g**2 + 2.0 * w_move * sigma_d**2 + 1e-9
+    lipschitz = 2.0 * (w_band * (len(rooms) + 1) + w_ref) * sigma_g**2 + 2.0 * w_move * sigma_d**2 + 1e-9
     step = 1.0 / lipschitz
 
     if warm_start is not None and len(warm_start) >= free:
@@ -205,4 +228,6 @@ def solve(
         iterations=it,
         cost=float(cost),
         steady_state_supply=float(model.supply_for_room(ref, float(outdoor[0]))),
+        # largest shortfall below a room set point (negative = below), per hour
+        worst_room=[float(x) for x in np.min(y_plan[None, :] - (floors[:, None] + tol_k), axis=0)],
     )

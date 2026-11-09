@@ -12,8 +12,8 @@ lags behind on cold fronts. This integration
    (room temperatures, measured supply temperature, outdoor temperature),
 2. **looks 36 hours ahead** with the hourly weather forecast (and optionally an electricity price
    forecast),
-3. **computes the supply temperature plan** that keeps the rooms inside your comfort band with as
-   little and as calm heating as possible,
+3. **computes the supply temperature plan** that brings every room to the set point of its own
+   thermostat, with as little and as calm heating as possible,
 4. and **writes the first hour of that plan** to your heating controller, every hour.
 
 Everything is set up and tuned in the UI. No YAML, no add-on, no cloud.
@@ -32,10 +32,15 @@ room:    y[k+1]  = y[k] + a·(xf[k]-y[k]) + b·(o[k]-y[k]) + c
 candidate with the smallest **12-hour open-loop prediction error** wins, because that is what the
 controller relies on. The model is retrained every night at 03:17 from the last 30 days.
 
-The controller minimises, over the horizon,
+The model describes the mean of all rooms. Each room follows that mean plus its current offset
+(a room that is 0.6 K below the mean stays roughly 0.6 K below). Over the horizon the controller
+minimises
 
-* squared violations of the comfort band (strong weight),
-* the distance to the middle of the band (weak weight),
+* for every room, the squared shortfall below *its own set point − tolerance* (strong weight; the
+  coldest room counts most),
+* the mean temperature above the mean set point + tolerance (rooms above their set point throttle
+  with their own valves, so only the mean is limited upwards),
+* the distance to the level at which the neediest room just reaches its set point (weak weight),
 * changes of the supply temperature (“smoothing weight”),
 * optionally `price × supply temperature` (“energy / price weight”),
 
@@ -64,10 +69,15 @@ Then: **Settings → Devices & services → Add integration → MPC Floor Heatin
 
 ## Setup
 
-**Step 1, measurements:** room sensors of the circuit (the mean is controlled), measured supply
-temperature, outdoor temperature (a median of several sensors is ideal), weather entity, price sensor.
-Only temperature sensors are offered. For the rooms, the list is narrowed to indoor thermometers
-and all of them are preselected; remove the rooms this circuit does not heat.
+**Step 1, measurements:** the rooms of the circuit, measured supply temperature, outdoor
+temperature (a median of several sensors is ideal), weather entity, price sensor.
+
+Rooms are preferably **room thermostats** (climate entities): their current temperature and their
+set point are used, including changes by a week program. All thermostats are preselected; remove
+the rooms this circuit does not heat. Rooms switched off (set point below 10 °C) are ignored. For
+training, the integration uses the temperature sensor on the same device as the thermostat,
+because climate entities have no long-term statistics. Rooms with only a thermometer can be added
+too; they use the *set point for rooms without thermostat*.
 
 The price sensor needs a list of hourly prices in an attribute. Detected automatically:
 EPEX Spot (`data`: `start_time`/`price_per_kwh`), Nord Pool (`raw_today`/`raw_tomorrow`:
@@ -101,15 +111,17 @@ retrained every hour instead of every night.
 |---|---|
 | Supply set point output | Only in the sensor mode: the set point for the heating controller, `unavailable` while control is off. |
 | Supply set point calculated | Always: the optimal set point for this hour. Attribute `plan`: hourly plan of supply, predicted room temperature, outdoor and price for the whole horizon. |
-| Room temperature mean | Mean of the room sensors right now. |
-| Room forecast in 6 h | Predicted room temperature (attributes: in 12 h, min/max next 24 h). |
+| Room temperature mean | Mean of the rooms right now. |
+| Largest shortfall below set point | Most negative *room − set point* of the active rooms right now. Attribute `rooms`: every room with temperature, set point and deviation. |
+| Room forecast in 6 h | Predicted mean room temperature (attributes: in 12 h, min/max next 24 h, largest shortfall in 6 h and over 24 h). |
 | Status | Learning model · Ready, control off · Control active · Paused, no heating mode · Measurement missing · Transmission failed |
 | Learning progress | 0 to 100 %, see above. |
-| Comfort minimum / maximum | Comfort band of the room mean. |
+| Tolerance around room set point | How far a room may fall below its set point before the controller reacts strongly (default 0.5 K). |
+| Set point for rooms without thermostat | Used for rooms that only have a thermometer (default 22 °C). |
 | Supply minimum / maximum | Limits of the supply set point. |
 | Max change per hour | Rate limit of the set point. |
 | Smoothing weight | Higher = calmer supply temperature, slower reaction. |
-| Energy / price weight | 0 = comfort only. Higher = use the comfort band to save energy and move heat into cheap hours. Start with 0.2 to 1. |
+| Energy / price weight | 0 = comfort only. Higher = use the tolerance to save energy and move heat into cheap hours. Start with 0.2 to 1. |
 | Control active | Switches the output on and off. |
 | Retrain model / Recalculate now | Buttons. |
 | Model dead time, screed / room time constant, model error, model trained | Diagnostics. A model error (12 h RMSE) below 0.3 K is good. |

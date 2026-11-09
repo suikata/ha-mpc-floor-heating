@@ -6,14 +6,14 @@
         "description": "Aus den stündlichen Statistikdaten dieser Sensoren lernt die Integration, wie dein Gebäude auf Vorlauf- und Außentemperatur reagiert. Sind bereits einige Tage Verlauf vorhanden, ist das Modell sofort einsatzbereit.",
         "data": {
           "name": "Name",
-          "room_sensors": "Raumtemperatur-Sensoren",
+          "room_sensors": "Räume (Raumthermostate)",
           "supply_sensor": "Gemessene Vorlauftemperatur",
           "outdoor_sensor": "Außentemperatur",
           "weather_entity": "Wettervorhersage",
           "price_sensor": "Strompreis-Prognose (optional)"
         },
         "data_description": {
-          "room_sensors": "Vorausgewählt sind alle Innenraum-Thermometer. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Geregelt wird auf den Mittelwert der ausgewählten Räume.",
+          "room_sensors": "Vorausgewählt sind alle Raumthermostate. Jeder Raum wird auf den Sollwert seines Thermostats geregelt; ausgeschaltete Räume (Sollwert unter 10 °C) werden ignoriert. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Räume mit nur einem Thermometer verwenden den „Sollwert für Räume ohne Thermostat“.",
           "supply_sensor": "Die gemessene Vorlauftemperatur des Fußbodenheizkreises nach dem Mischventil.",
           "outdoor_sensor": "Eine zuverlässige Außentemperatur, idealerweise der Mittelwert oder Median mehrerer Fühler.",
           "weather_entity": "Angeboten werden nur Wetterdienste mit stündlicher Vorhersage. Ohne Vorhersage rechnet der Regler mit der aktuellen Außentemperatur weiter.",
@@ -54,7 +54,7 @@
       "init": {
         "title": "MPC Fußbodenheizung",
         "data": {
-          "room_sensors": "Raumtemperatur-Sensoren",
+          "room_sensors": "Räume (Raumthermostate)",
           "supply_sensor": "Gemessene Vorlauftemperatur",
           "outdoor_sensor": "Außentemperatur",
           "weather_entity": "Wettervorhersage",
@@ -65,7 +65,7 @@
           "train_days": "Trainingszeitraum"
         },
         "data_description": {
-          "room_sensors": "Vorausgewählt sind alle Innenraum-Thermometer. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Geregelt wird auf den Mittelwert der ausgewählten Räume.",
+          "room_sensors": "Vorausgewählt sind alle Raumthermostate. Jeder Raum wird auf den Sollwert seines Thermostats geregelt; ausgeschaltete Räume (Sollwert unter 10 °C) werden ignoriert. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Räume mit nur einem Thermometer verwenden den „Sollwert für Räume ohne Thermostat“.",
           "supply_sensor": "Die gemessene Vorlauftemperatur des Fußbodenheizkreises nach dem Mischventil.",
           "outdoor_sensor": "Eine zuverlässige Außentemperatur, idealerweise der Mittelwert oder Median mehrerer Fühler.",
           "weather_entity": "Angeboten werden nur Wetterdienste mit stündlicher Vorhersage. Ohne Vorhersage rechnet der Regler mit der aktuellen Außentemperatur weiter.",
@@ -143,6 +143,12 @@
           },
           "in_12h": {
             "name": "In 12 h"
+          },
+          "shortfall_6h": {
+            "name": "Größte Unterschreitung in 6 h"
+          },
+          "shortfall_24h": {
+            "name": "Größte Unterschreitung nächste 24 h"
           }
         }
       },
@@ -243,15 +249,17 @@
       },
       "model_trained": {
         "name": "Modell gelernt"
+      },
+      "largest_shortfall": {
+        "name": "Größte Unterschreitung des Sollwerts",
+        "state_attributes": {
+          "rooms": {
+            "name": "Räume"
+          }
+        }
       }
     },
     "number": {
-      "comfort_min": {
-        "name": "Komfort Minimum"
-      },
-      "comfort_max": {
-        "name": "Komfort Maximum"
-      },
       "supply_min": {
         "name": "Vorlauf Minimum"
       },
@@ -266,6 +274,12 @@
       },
       "w_cost": {
         "name": "Gewicht Energie/Preis"
+      },
+      "tolerance": {
+        "name": "Toleranz um den Raum-Sollwert"
+      },
+      "default_setpoint": {
+        "name": "Sollwert für Räume ohne Thermostat"
       }
     },
     "switch": {

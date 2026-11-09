@@ -6,14 +6,14 @@
         "description": "From the hourly statistics of these sensors the integration learns how your building responds to supply and outdoor temperature. With a few days of history the model is ready right away.",
         "data": {
           "name": "Name",
-          "room_sensors": "Room temperature sensors",
+          "room_sensors": "Rooms (thermostats)",
           "supply_sensor": "Measured supply (flow) temperature",
           "outdoor_sensor": "Outdoor temperature",
           "weather_entity": "Weather forecast",
           "price_sensor": "Electricity price forecast (optional)"
         },
         "data_description": {
-          "room_sensors": "All indoor thermometers are preselected. Remove the rooms this heating circuit does not heat. The controller uses the mean of the selected rooms.",
+          "room_sensors": "Preselected are all room thermostats. Each room is controlled towards the set point of its thermostat; rooms that are switched off (set point below 10 °C) are ignored. Remove the rooms this heating circuit does not heat. Rooms with only a thermometer use the set point for rooms without thermostat.",
           "supply_sensor": "The measured supply temperature of the floor heating circuit after the mixing valve.",
           "outdoor_sensor": "A reliable outdoor temperature, ideally the mean or median of several sensors.",
           "weather_entity": "Only weather services with an hourly forecast are offered. Without a forecast the controller keeps the current outdoor temperature.",
@@ -54,7 +54,7 @@
       "init": {
         "title": "MPC Floor Heating",
         "data": {
-          "room_sensors": "Room temperature sensors",
+          "room_sensors": "Rooms (thermostats)",
           "supply_sensor": "Measured supply (flow) temperature",
           "outdoor_sensor": "Outdoor temperature",
           "weather_entity": "Weather forecast",
@@ -65,7 +65,7 @@
           "train_days": "Training period"
         },
         "data_description": {
-          "room_sensors": "All indoor thermometers are preselected. Remove the rooms this heating circuit does not heat. The controller uses the mean of the selected rooms.",
+          "room_sensors": "Preselected are all room thermostats. Each room is controlled towards the set point of its thermostat; rooms that are switched off (set point below 10 °C) are ignored. Remove the rooms this heating circuit does not heat. Rooms with only a thermometer use the set point for rooms without thermostat.",
           "supply_sensor": "The measured supply temperature of the floor heating circuit after the mixing valve.",
           "outdoor_sensor": "A reliable outdoor temperature, ideally the mean or median of several sensors.",
           "weather_entity": "Only weather services with an hourly forecast are offered. Without a forecast the controller keeps the current outdoor temperature.",
@@ -143,6 +143,12 @@
           },
           "in_12h": {
             "name": "In 12 h"
+          },
+          "shortfall_6h": {
+            "name": "Largest shortfall in 6 h"
+          },
+          "shortfall_24h": {
+            "name": "Largest shortfall next 24 h"
           }
         }
       },
@@ -243,15 +249,17 @@
       },
       "model_trained": {
         "name": "Model trained"
+      },
+      "largest_shortfall": {
+        "name": "Largest shortfall below set point",
+        "state_attributes": {
+          "rooms": {
+            "name": "Rooms"
+          }
+        }
       }
     },
     "number": {
-      "comfort_min": {
-        "name": "Comfort minimum"
-      },
-      "comfort_max": {
-        "name": "Comfort maximum"
-      },
       "supply_min": {
         "name": "Supply minimum"
       },
@@ -266,6 +274,12 @@
       },
       "w_cost": {
         "name": "Energy / price weight"
+      },
+      "tolerance": {
+        "name": "Tolerance around room set point"
+      },
+      "default_setpoint": {
+        "name": "Set point for rooms without thermostat"
       }
     },
     "switch": {
