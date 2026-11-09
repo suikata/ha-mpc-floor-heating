@@ -26,7 +26,7 @@
           "control_mode": "Handover to the heating"
         },
         "data_description": {
-          "control_mode": "\"Own set point sensor\": the integration provides the sensor \"Supply set point output\", which your heating controller reads, e.g. with an ESPHome sensor of type homeassistant. While control is switched off this sensor is unavailable and the heating keeps its own heating curve."
+          "control_mode": "\"Create a new set point sensor\": the integration creates the sensor \"Supply set point output\" itself, nothing has to be set up beforehand. Your heating controller reads it, e.g. with an ESPHome sensor of type homeassistant. While control is switched off the sensor is unavailable and the heating keeps its own heating curve."
         },
         "description": "Choose how the calculated supply set point is handed to your heating. After setup, control is switched off: the set point is only calculated and shown. It is handed over once you turn on the switch \"Control active\"."
       },
@@ -70,7 +70,7 @@
           "outdoor_sensor": "A reliable outdoor temperature, ideally the mean or median of several sensors.",
           "weather_entity": "Only weather services with an hourly forecast are offered. Without a forecast the controller keeps the current outdoor temperature.",
           "price_sensor": "Sensors with a price per kWh or MWh are offered. The sensor must provide the prices of the coming hours in an attribute, like the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats are recognised as well.",
-          "control_mode": "\"Own set point sensor\": the integration provides the sensor \"Supply set point output\", which your heating controller reads, e.g. with an ESPHome sensor of type homeassistant. While control is switched off this sensor is unavailable and the heating keeps its own heating curve.",
+          "control_mode": "\"Create a new set point sensor\": the integration creates the sensor \"Supply set point output\" itself, nothing has to be set up beforehand. Your heating controller reads it, e.g. with an ESPHome sensor of type homeassistant. While control is switched off the sensor is unavailable and the heating keeps its own heating curve.",
           "enable_entity": "Not needed to switch control on, that is what the switch \"Control active\" is for. Pick an entity here to pause control automatically, e.g. the operating mode of the heating: \"off\" or \"cool\" pauses, \"heat\" controls.",
           "horizon": "How many hours the controller plans ahead. Should be well above the reaction time of the floor.",
           "train_days": "How many days of statistics the model learns from. It is recalculated every night."
@@ -98,9 +98,9 @@
   "selector": {
     "control_mode": {
       "options": {
-        "sensor": "Own set point sensor (read by the heating controller)",
-        "climate": "Hand the set point to a climate entity",
-        "number": "Hand the set point to a number entity"
+        "sensor": "Create a new set point sensor (read by the heating controller)",
+        "climate": "Hand the set point to an existing climate entity",
+        "number": "Hand the set point to an existing number entity"
       }
     }
   },

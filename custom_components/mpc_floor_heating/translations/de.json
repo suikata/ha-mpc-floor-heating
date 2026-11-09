@@ -26,7 +26,7 @@
           "control_mode": "Übergabe an die Heizung"
         },
         "data_description": {
-          "control_mode": "„Eigener Sollwert-Sensor“: Die Integration stellt den Sensor „Vorlauf Sollwert Ausgang“ bereit, den deine Heizungssteuerung abfragt, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist dieser Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve."
+          "control_mode": "„Neuen Sollwert-Sensor erstellen“: Die Integration legt den Sensor „Vorlauf Sollwert Ausgang“ selbst an, du musst vorher nichts erstellen. Deine Heizungssteuerung fragt ihn ab, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist der Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve."
         },
         "description": "Lege fest, wie der berechnete Vorlauf-Sollwert an deine Heizung übergeben wird. Nach der Einrichtung ist die Regelung zunächst ausgeschaltet: Der Sollwert wird nur berechnet und angezeigt. Erst wenn du den Schalter „Regelung aktiv“ einschaltest, wird er an die Heizung übergeben."
       },
@@ -70,7 +70,7 @@
           "outdoor_sensor": "Eine zuverlässige Außentemperatur, idealerweise der Mittelwert oder Median mehrerer Fühler.",
           "weather_entity": "Angeboten werden nur Wetterdienste mit stündlicher Vorhersage. Ohne Vorhersage rechnet der Regler mit der aktuellen Außentemperatur weiter.",
           "price_sensor": "Angeboten werden Sensoren mit einem Preis je kWh oder MWh. Der Sensor muss die Preise der kommenden Stunden als Attribut liefern, wie z. B. die [EPEX-Spot-Integration](https://github.com/mampfes/ha_epex_spot). Die Formate von Nord Pool und Tibber werden ebenfalls erkannt.",
-          "control_mode": "„Eigener Sollwert-Sensor“: Die Integration stellt den Sensor „Vorlauf Sollwert Ausgang“ bereit, den deine Heizungssteuerung abfragt, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist dieser Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve.",
+          "control_mode": "„Neuen Sollwert-Sensor erstellen“: Die Integration legt den Sensor „Vorlauf Sollwert Ausgang“ selbst an, du musst vorher nichts erstellen. Deine Heizungssteuerung fragt ihn ab, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist der Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve.",
           "enable_entity": "Zum Einschalten der Regelung nicht nötig, dafür gibt es den Schalter „Regelung aktiv“. Hier kannst du eine Entität wählen, die die Regelung automatisch pausiert, z. B. die Betriebsart der Heizung: Bei „off“ oder „cool“ wird pausiert, bei „heat“ geregelt.",
           "horizon": "Wie viele Stunden der Regler vorausplant. Der Wert sollte deutlich über der Reaktionszeit des Bodens liegen.",
           "train_days": "Aus wie vielen Tagen Statistik das Modell lernt. Es wird jede Nacht neu berechnet."
@@ -98,9 +98,9 @@
   "selector": {
     "control_mode": {
       "options": {
-        "sensor": "Eigener Sollwert-Sensor (wird von der Heizungssteuerung abgefragt)",
-        "climate": "Sollwert an eine Climate-Entität übergeben",
-        "number": "Sollwert an eine Zahlen-Entität übergeben"
+        "sensor": "Neuen Sollwert-Sensor erstellen (die Heizungssteuerung liest ihn)",
+        "climate": "Sollwert an eine bestehende Climate-Entität übergeben",
+        "number": "Sollwert an eine bestehende Zahlen-Entität übergeben"
       }
     }
   },
