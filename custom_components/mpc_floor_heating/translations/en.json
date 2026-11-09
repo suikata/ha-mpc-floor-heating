@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Measurements",
-        "description": "The building model learns from the hourly statistics of these sensors in the recorder. With existing history it is ready right away.",
+        "description": "From the hourly statistics of these sensors the integration learns how your building responds to supply and outdoor temperature. With a few days of history the model is ready right away.",
         "data": {
           "name": "Name",
           "room_sensors": "Room temperature sensors",
@@ -13,32 +13,33 @@
           "price_sensor": "Electricity price forecast (optional)"
         },
         "data_description": {
-          "room_sensors": "Indoor temperature sensors of the rooms on this circuit, all preselected. Remove rooms that are not heated by it. The controller uses their mean.",
-          "supply_sensor": "The actual flow temperature of the floor heating circuit, after the mixing valve.",
-          "outdoor_sensor": "A reliable outdoor temperature, ideally a mean or median of several sensors.",
-          "weather_entity": "Needs an hourly forecast. Without it the current outdoor temperature is held.",
-          "price_sensor": "A sensor with hourly prices in its attributes, e.g. from the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats work as well."
+          "room_sensors": "All indoor thermometers are preselected. Remove the rooms this heating circuit does not heat. The controller uses the mean of the selected rooms.",
+          "supply_sensor": "The measured supply temperature of the floor heating circuit after the mixing valve.",
+          "outdoor_sensor": "A reliable outdoor temperature, ideally the mean or median of several sensors.",
+          "weather_entity": "Only weather services with an hourly forecast are offered. Without a forecast the controller keeps the current outdoor temperature.",
+          "price_sensor": "Sensors with a price per kWh or MWh are offered. The sensor must provide the prices of the coming hours in an attribute, like the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats are recognised as well."
         }
       },
       "control": {
-        "title": "Set point output",
+        "title": "Set point handover",
         "data": {
-          "control_mode": "How should the set point reach your heating?"
+          "control_mode": "Handover to the heating"
         },
         "data_description": {
-          "control_mode": "With a set point sensor, the integration creates the sensor \"Supply set point output\". Your heating controller reads it (e.g. ESPHome homeassistant sensor). It only carries a value while control is active; otherwise it is unavailable and the controller keeps its own heating curve."
-        }
+          "control_mode": "\"Own set point sensor\": the integration provides the sensor \"Supply set point output\", which your heating controller reads, e.g. with an ESPHome sensor of type homeassistant. While control is switched off this sensor is unavailable and the heating keeps its own heating curve."
+        },
+        "description": "Choose how the calculated supply set point is handed to your heating. After setup, control is switched off: the set point is only calculated and shown. It is handed over once you turn on the switch \"Control active\"."
       },
       "target_climate": {
         "title": "Climate entity",
-        "description": "The climate entity whose target temperature is the supply set point.",
+        "description": "Choose the climate entity of the supply controller. Its target temperature is set to the calculated supply set point every hour.",
         "data": {
           "target_entity": "Climate entity"
         }
       },
       "target_number": {
         "title": "Number entity",
-        "description": "The number or input_number that takes the supply set point. It is written every hour.",
+        "description": "Choose the number or input_number entity that takes the supply set point. It is set every hour.",
         "data": {
           "target_entity": "Number entity"
         }
@@ -58,33 +59,33 @@
           "outdoor_sensor": "Outdoor temperature",
           "weather_entity": "Weather forecast",
           "price_sensor": "Electricity price forecast (optional)",
-          "control_mode": "How should the set point reach your heating?",
+          "control_mode": "Handover to the heating",
           "enable_entity": "Heating mode condition (optional)",
           "horizon": "Prediction horizon",
           "train_days": "Training period"
         },
         "data_description": {
-          "room_sensors": "Indoor temperature sensors of the rooms on this circuit, all preselected. Remove rooms that are not heated by it. The controller uses their mean.",
-          "supply_sensor": "The actual flow temperature of the floor heating circuit, after the mixing valve.",
-          "outdoor_sensor": "A reliable outdoor temperature, ideally a mean or median of several sensors.",
-          "weather_entity": "Needs an hourly forecast. Without it the current outdoor temperature is held.",
-          "price_sensor": "A sensor with hourly prices in its attributes, e.g. from the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats work as well.",
-          "control_mode": "With a set point sensor, the integration creates the sensor \"Supply set point output\". Your heating controller reads it (e.g. ESPHome homeassistant sensor). It only carries a value while control is active; otherwise it is unavailable and the controller keeps its own heating curve.",
-          "enable_entity": "Not needed to switch control on: the integration has its own switch \"Control active\". Use this only to pause automatically, e.g. with the operating mode of the heating (off/cool pause, heat runs).",
-          "horizon": "Hours the controller looks ahead. Should be well above the reaction time of the floor.",
-          "train_days": "Days of recorder statistics used to learn the model. Retrained every night."
+          "room_sensors": "All indoor thermometers are preselected. Remove the rooms this heating circuit does not heat. The controller uses the mean of the selected rooms.",
+          "supply_sensor": "The measured supply temperature of the floor heating circuit after the mixing valve.",
+          "outdoor_sensor": "A reliable outdoor temperature, ideally the mean or median of several sensors.",
+          "weather_entity": "Only weather services with an hourly forecast are offered. Without a forecast the controller keeps the current outdoor temperature.",
+          "price_sensor": "Sensors with a price per kWh or MWh are offered. The sensor must provide the prices of the coming hours in an attribute, like the [EPEX Spot integration](https://github.com/mampfes/ha_epex_spot). Nord Pool and Tibber formats are recognised as well.",
+          "control_mode": "\"Own set point sensor\": the integration provides the sensor \"Supply set point output\", which your heating controller reads, e.g. with an ESPHome sensor of type homeassistant. While control is switched off this sensor is unavailable and the heating keeps its own heating curve.",
+          "enable_entity": "Not needed to switch control on, that is what the switch \"Control active\" is for. Pick an entity here to pause control automatically, e.g. the operating mode of the heating: \"off\" or \"cool\" pauses, \"heat\" controls.",
+          "horizon": "How many hours the controller plans ahead. Should be well above the reaction time of the floor.",
+          "train_days": "How many days of statistics the model learns from. It is recalculated every night."
         }
       },
       "target_climate": {
         "title": "Climate entity",
-        "description": "The climate entity whose target temperature is the supply set point.",
+        "description": "Choose the climate entity of the supply controller. Its target temperature is set to the calculated supply set point every hour.",
         "data": {
           "target_entity": "Climate entity"
         }
       },
       "target_number": {
         "title": "Number entity",
-        "description": "The number or input_number that takes the supply set point. It is written every hour.",
+        "description": "Choose the number or input_number entity that takes the supply set point. It is set every hour.",
         "data": {
           "target_entity": "Number entity"
         }
@@ -97,9 +98,9 @@
   "selector": {
     "control_mode": {
       "options": {
-        "sensor": "Own set point sensor (the heating controller reads it)",
-        "climate": "Absolute set point to a climate entity",
-        "number": "Absolute set point to a number entity"
+        "sensor": "Own set point sensor (read by the heating controller)",
+        "climate": "Hand the set point to a climate entity",
+        "number": "Hand the set point to a number entity"
       }
     }
   },

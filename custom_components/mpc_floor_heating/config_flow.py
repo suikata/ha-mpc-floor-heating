@@ -48,6 +48,7 @@ from .const import (
     TECHNICAL_AREA_WORDS,
     TECHNICAL_WORDS,
 )
+from .timeseries import extract_price_points
 
 TEMP_UNITS = {"°C", "°F", "K"}
 
@@ -109,6 +110,29 @@ def indoor_temperature_sensors(hass: HomeAssistant) -> list[str]:
     return sorted(found)
 
 
+PRICE_UNIT_RE = re.compile(r"/\s*[km]?wh\b", re.IGNORECASE)
+
+
+def price_sensors(hass: HomeAssistant) -> list[str]:
+    """Sensors with a price per energy unit (€/kWh, ct/kWh, EUR/MWh, ...)
+    or with an hourly price list in their attributes."""
+    found = []
+    for state in hass.states.async_all("sensor"):
+        unit = str(state.attributes.get("unit_of_measurement") or "")
+        if "co2" in unit.lower():  # emission intensity, not a price
+            continue
+        if PRICE_UNIT_RE.search(unit) or extract_price_points(dict(state.attributes)):
+            found.append(state.entity_id)
+    return sorted(found)
+
+
+def _price_selector(candidates: list[str]) -> EntitySelector:
+    config = EntitySelectorConfig(domain="sensor")
+    if candidates:
+        config["include_entities"] = candidates
+    return EntitySelector(config)
+
+
 def _room_selector(candidates: list[str]) -> EntitySelector:
     config = EntitySelectorConfig(domain="sensor", device_class="temperature", multiple=True)
     if candidates:
@@ -117,7 +141,7 @@ def _room_selector(candidates: list[str]) -> EntitySelector:
 
 
 # ------------------------------------------------------------------- schemas
-def _sensor_schema(candidates: list[str]) -> dict[Any, Any]:
+def _sensor_schema(candidates: list[str], prices: list[str]) -> dict[Any, Any]:
     return {
         vol.Required(CONF_ROOM_SENSORS): _room_selector(candidates),
         vol.Required(CONF_SUPPLY_SENSOR): TEMP_SENSOR,
@@ -127,7 +151,7 @@ def _sensor_schema(candidates: list[str]) -> dict[Any, Any]:
                 filter={"domain": "weather", "supported_features": ["weather.WeatherEntityFeature.FORECAST_HOURLY"]}
             )
         ),
-        vol.Optional(CONF_PRICE_SENSOR): EntitySelector(EntitySelectorConfig(domain="sensor")),
+        vol.Optional(CONF_PRICE_SENSOR): _price_selector(prices),
     }
 
 
@@ -180,7 +204,10 @@ class MpcConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 self._data = dict(user_input)
                 return await self.async_step_control()
-        schema = vol.Schema({vol.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector(), **_sensor_schema(candidates)})
+        prices = price_sensors(self.hass)
+        schema = vol.Schema(
+            {vol.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector(), **_sensor_schema(candidates, prices)}
+        )
         suggested = user_input if user_input is not None else {CONF_ROOM_SENSORS: candidates}
         return self.async_show_form(
             step_id="user",
@@ -236,6 +263,9 @@ class MpcOptionsFlow(OptionsFlow):
         current = dict(self.config_entry.options)
         # keep sensors chosen earlier selectable even if the heuristic skips them
         candidates = sorted(set(candidates) | set(current.get(CONF_ROOM_SENSORS, [])))
+        prices = price_sensors(self.hass)
+        if current.get(CONF_PRICE_SENSOR):
+            prices = sorted(set(prices) | {current[CONF_PRICE_SENSOR]})
         if user_input is not None:
             if not user_input.get(CONF_ROOM_SENSORS):
                 errors[CONF_ROOM_SENSORS] = "rooms_required"
@@ -246,7 +276,7 @@ class MpcOptionsFlow(OptionsFlow):
                 return await self.async_step_target()
         schema = vol.Schema(
             {
-                **_sensor_schema(candidates),
+                **_sensor_schema(candidates, prices),
                 vol.Required(CONF_CONTROL_MODE, default=MODE_SENSOR): MODE_SELECTOR,
                 **_advanced_schema(),
             }

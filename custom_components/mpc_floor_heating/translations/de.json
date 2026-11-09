@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Messwerte",
-        "description": "Das Gebäudemodell lernt aus den Stundenstatistiken dieser Sensoren im Recorder. Ist schon Verlauf vorhanden, ist es sofort einsatzbereit.",
+        "description": "Aus den stündlichen Statistikdaten dieser Sensoren lernt die Integration, wie dein Gebäude auf Vorlauf- und Außentemperatur reagiert. Sind bereits einige Tage Verlauf vorhanden, ist das Modell sofort einsatzbereit.",
         "data": {
           "name": "Name",
           "room_sensors": "Raumtemperatur-Sensoren",
@@ -13,32 +13,33 @@
           "price_sensor": "Strompreis-Prognose (optional)"
         },
         "data_description": {
-          "room_sensors": "Innenraum-Temperatursensoren der Räume an diesem Heizkreis, alle vorausgewählt. Entferne Räume, die nicht über diesen Kreis beheizt werden. Geregelt wird auf ihren Mittelwert.",
-          "supply_sensor": "Die tatsächliche Vorlauftemperatur des Fußbodenheizkreises nach dem Mischer.",
-          "outdoor_sensor": "Eine zuverlässige Außentemperatur, am besten Mittelwert oder Median mehrerer Sensoren.",
-          "weather_entity": "Braucht eine stündliche Vorhersage. Ohne sie wird die aktuelle Außentemperatur fortgeschrieben.",
-          "price_sensor": "Ein Sensor mit stündlichen Preisen in den Attributen, z. B. aus der [EPEX-Spot-Integration](https://github.com/mampfes/ha_epex_spot). Nord-Pool- und Tibber-Formate funktionieren ebenfalls."
+          "room_sensors": "Vorausgewählt sind alle Innenraum-Thermometer. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Geregelt wird auf den Mittelwert der ausgewählten Räume.",
+          "supply_sensor": "Die gemessene Vorlauftemperatur des Fußbodenheizkreises nach dem Mischventil.",
+          "outdoor_sensor": "Eine zuverlässige Außentemperatur, idealerweise der Mittelwert oder Median mehrerer Fühler.",
+          "weather_entity": "Angeboten werden nur Wetterdienste mit stündlicher Vorhersage. Ohne Vorhersage rechnet der Regler mit der aktuellen Außentemperatur weiter.",
+          "price_sensor": "Angeboten werden Sensoren mit einem Preis je kWh oder MWh. Der Sensor muss die Preise der kommenden Stunden als Attribut liefern, wie z. B. die [EPEX-Spot-Integration](https://github.com/mampfes/ha_epex_spot). Die Formate von Nord Pool und Tibber werden ebenfalls erkannt."
         }
       },
       "control": {
-        "title": "Sollwert-Ausgabe",
+        "title": "Übergabe des Sollwerts",
         "data": {
-          "control_mode": "Wie soll der Sollwert zur Heizung kommen?"
+          "control_mode": "Übergabe an die Heizung"
         },
         "data_description": {
-          "control_mode": "Bei „Eigener Sollwert-Sensor“ legt die Integration den Sensor „Vorlauf Sollwert Ausgang“ an. Deine Heizungssteuerung liest ihn (z. B. ESPHome-homeassistant-Sensor). Er hat nur einen Wert, solange die Regelung aktiv ist, sonst ist er nicht verfügbar und die Steuerung bleibt bei ihrer eigenen Heizkurve."
-        }
+          "control_mode": "„Eigener Sollwert-Sensor“: Die Integration stellt den Sensor „Vorlauf Sollwert Ausgang“ bereit, den deine Heizungssteuerung abfragt, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist dieser Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve."
+        },
+        "description": "Lege fest, wie der berechnete Vorlauf-Sollwert an deine Heizung übergeben wird. Nach der Einrichtung ist die Regelung zunächst ausgeschaltet: Der Sollwert wird nur berechnet und angezeigt. Erst wenn du den Schalter „Regelung aktiv“ einschaltest, wird er an die Heizung übergeben."
       },
       "target_climate": {
         "title": "Climate-Entität",
-        "description": "Die Climate-Entität, deren Solltemperatur der Vorlauf-Sollwert ist.",
+        "description": "Wähle die Climate-Entität des Vorlaufreglers. Ihre Solltemperatur wird stündlich auf den berechneten Vorlauf-Sollwert gesetzt.",
         "data": {
           "target_entity": "Climate-Entität"
         }
       },
       "target_number": {
         "title": "Zahlen-Entität",
-        "description": "Die number- oder input_number-Entität, die den Vorlauf-Sollwert übernimmt. Sie wird stündlich beschrieben.",
+        "description": "Wähle die number- oder input_number-Entität, die den Vorlauf-Sollwert übernimmt. Sie wird stündlich neu gesetzt.",
         "data": {
           "target_entity": "Zahlen-Entität"
         }
@@ -58,33 +59,33 @@
           "outdoor_sensor": "Außentemperatur",
           "weather_entity": "Wettervorhersage",
           "price_sensor": "Strompreis-Prognose (optional)",
-          "control_mode": "Wie soll der Sollwert zur Heizung kommen?",
+          "control_mode": "Übergabe an die Heizung",
           "enable_entity": "Heizbetrieb-Bedingung (optional)",
           "horizon": "Prognosehorizont",
           "train_days": "Trainingszeitraum"
         },
         "data_description": {
-          "room_sensors": "Innenraum-Temperatursensoren der Räume an diesem Heizkreis, alle vorausgewählt. Entferne Räume, die nicht über diesen Kreis beheizt werden. Geregelt wird auf ihren Mittelwert.",
-          "supply_sensor": "Die tatsächliche Vorlauftemperatur des Fußbodenheizkreises nach dem Mischer.",
-          "outdoor_sensor": "Eine zuverlässige Außentemperatur, am besten Mittelwert oder Median mehrerer Sensoren.",
-          "weather_entity": "Braucht eine stündliche Vorhersage. Ohne sie wird die aktuelle Außentemperatur fortgeschrieben.",
-          "price_sensor": "Ein Sensor mit stündlichen Preisen in den Attributen, z. B. aus der [EPEX-Spot-Integration](https://github.com/mampfes/ha_epex_spot). Nord-Pool- und Tibber-Formate funktionieren ebenfalls.",
-          "control_mode": "Bei „Eigener Sollwert-Sensor“ legt die Integration den Sensor „Vorlauf Sollwert Ausgang“ an. Deine Heizungssteuerung liest ihn (z. B. ESPHome-homeassistant-Sensor). Er hat nur einen Wert, solange die Regelung aktiv ist, sonst ist er nicht verfügbar und die Steuerung bleibt bei ihrer eigenen Heizkurve.",
-          "enable_entity": "Nicht nötig zum Einschalten: Dafür hat die Integration den eigenen Schalter „Regelung aktiv“. Nur zum automatischen Pausieren, z. B. mit der Betriebsart der Heizung (off/cool pausiert, heat regelt).",
-          "horizon": "So viele Stunden schaut der Regler voraus. Sollte deutlich über der Reaktionszeit des Bodens liegen.",
-          "train_days": "Tage an Recorder-Statistik, aus denen das Modell lernt. Wird jede Nacht neu gelernt."
+          "room_sensors": "Vorausgewählt sind alle Innenraum-Thermometer. Entferne die Räume, die nicht von diesem Heizkreis beheizt werden. Geregelt wird auf den Mittelwert der ausgewählten Räume.",
+          "supply_sensor": "Die gemessene Vorlauftemperatur des Fußbodenheizkreises nach dem Mischventil.",
+          "outdoor_sensor": "Eine zuverlässige Außentemperatur, idealerweise der Mittelwert oder Median mehrerer Fühler.",
+          "weather_entity": "Angeboten werden nur Wetterdienste mit stündlicher Vorhersage. Ohne Vorhersage rechnet der Regler mit der aktuellen Außentemperatur weiter.",
+          "price_sensor": "Angeboten werden Sensoren mit einem Preis je kWh oder MWh. Der Sensor muss die Preise der kommenden Stunden als Attribut liefern, wie z. B. die [EPEX-Spot-Integration](https://github.com/mampfes/ha_epex_spot). Die Formate von Nord Pool und Tibber werden ebenfalls erkannt.",
+          "control_mode": "„Eigener Sollwert-Sensor“: Die Integration stellt den Sensor „Vorlauf Sollwert Ausgang“ bereit, den deine Heizungssteuerung abfragt, z. B. über einen ESPHome-Sensor vom Typ homeassistant. Solange die Regelung ausgeschaltet ist, ist dieser Sensor nicht verfügbar und die Heizung arbeitet weiter mit ihrer eigenen Heizkurve.",
+          "enable_entity": "Zum Einschalten der Regelung nicht nötig, dafür gibt es den Schalter „Regelung aktiv“. Hier kannst du eine Entität wählen, die die Regelung automatisch pausiert, z. B. die Betriebsart der Heizung: Bei „off“ oder „cool“ wird pausiert, bei „heat“ geregelt.",
+          "horizon": "Wie viele Stunden der Regler vorausplant. Der Wert sollte deutlich über der Reaktionszeit des Bodens liegen.",
+          "train_days": "Aus wie vielen Tagen Statistik das Modell lernt. Es wird jede Nacht neu berechnet."
         }
       },
       "target_climate": {
         "title": "Climate-Entität",
-        "description": "Die Climate-Entität, deren Solltemperatur der Vorlauf-Sollwert ist.",
+        "description": "Wähle die Climate-Entität des Vorlaufreglers. Ihre Solltemperatur wird stündlich auf den berechneten Vorlauf-Sollwert gesetzt.",
         "data": {
           "target_entity": "Climate-Entität"
         }
       },
       "target_number": {
         "title": "Zahlen-Entität",
-        "description": "Die number- oder input_number-Entität, die den Vorlauf-Sollwert übernimmt. Sie wird stündlich beschrieben.",
+        "description": "Wähle die number- oder input_number-Entität, die den Vorlauf-Sollwert übernimmt. Sie wird stündlich neu gesetzt.",
         "data": {
           "target_entity": "Zahlen-Entität"
         }
@@ -97,9 +98,9 @@
   "selector": {
     "control_mode": {
       "options": {
-        "sensor": "Eigener Sollwert-Sensor (die Heizungssteuerung liest ihn)",
-        "climate": "Absoluter Sollwert an Climate-Entität",
-        "number": "Absoluter Sollwert an Zahlen-Entität"
+        "sensor": "Eigener Sollwert-Sensor (wird von der Heizungssteuerung abgefragt)",
+        "climate": "Sollwert an eine Climate-Entität übergeben",
+        "number": "Sollwert an eine Zahlen-Entität übergeben"
       }
     }
   },
