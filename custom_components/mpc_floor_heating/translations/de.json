@@ -174,6 +174,7 @@
             "name": "Letztes Problem",
             "state": {
               "collecting_data": "Sammle Daten für das Modell",
+              "starting": "Warte nach dem Neustart auf die Sensoren",
               "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
               "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
               "outdoor_missing": "Keine Außentemperatur",
@@ -197,6 +198,7 @@
             "name": "Meldung",
             "state": {
               "collecting_data": "Sammle Daten für das Modell",
+              "starting": "Warte nach dem Neustart auf die Sensoren",
               "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
               "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
               "outdoor_missing": "Keine Außentemperatur",
@@ -230,6 +232,7 @@
             "name": "Letztes Problem",
             "state": {
               "collecting_data": "Sammle Daten für das Modell",
+              "starting": "Warte nach dem Neustart auf die Sensoren",
               "model_not_identifiable": "Noch kein plausibles Modell, mehr Daten oder mehr Schwankung im Vorlauf nötig",
               "room_or_supply_missing": "Raum- oder Vorlauftemperatur nicht verfügbar",
               "outdoor_missing": "Keine Außentemperatur",

@@ -49,6 +49,8 @@ Regler minimiert über den Prognosehorizont
 unter Einhaltung von Vorlauf-Minimum und -Maximum. Das Problem ist konvex und wird in reinem
 numpy (beschleunigter projizierter Gradient) in wenigen Millisekunden gelöst.
 
+Die Raumtemperaturen werden vor der Verwendung über die letzten 2 Stunden gemittelt. Lüften oder eine offene Tür verändern so die Vorlauftemperatur eines Bodens, der erst nach Stunden reagiert, nicht. Nach einem Neustart von Home Assistant wartet der Regler etwa 3 Minuten, bis Thermostate und Sensoren gemeldet haben, statt mit der Hälfte der Räume zu planen.
+
 ## Installation
 
 **HACS:** HACS → ⋮ → Benutzerdefinierte Repositories → dieses Repository als Typ *Integration*

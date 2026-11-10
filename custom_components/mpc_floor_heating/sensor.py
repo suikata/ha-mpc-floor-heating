@@ -89,6 +89,7 @@ def _rooms_attrs(c: MpcCoordinator) -> dict[str, Any]:
             {
                 "name": r["name"],
                 "temperature": _r(r["temperature"], 1),
+                "temperature_now": _r(r.get("temperature_now"), 1),
                 "setpoint": _r(r["setpoint"], 1),
                 "deviation": r["deviation"],
                 "active": r["active"],

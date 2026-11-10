@@ -47,6 +47,8 @@ minimises
 subject to the supply minimum and maximum. It is a convex problem, solved in pure numpy
 (accelerated projected gradient) in a few milliseconds.
 
+Room temperatures are averaged over the last 2 hours before they are used, so airing a room or an open door does not move the supply temperature of a floor that reacts in hours. After a restart of Home Assistant the controller waits about 3 minutes until thermostats and sensors have reported, instead of planning with half of the rooms.
+
 ## Installation
 
 **HACS:** HACS → ⋮ → Custom repositories → add this repository as type *Integration* →

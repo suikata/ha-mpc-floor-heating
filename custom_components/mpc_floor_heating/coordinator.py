@@ -48,6 +48,7 @@ from .const import (
     RETRAIN_HOUR,
     RETRAIN_MINUTE,
     RUN_MINUTE,
+    SMOOTH_HOURS,
     STATUS_ACTIVE,
     STATUS_INPUT_MISSING,
     STATUS_LEARNING,
@@ -67,6 +68,7 @@ from .timeseries import (
     step_series,
     to_float,
     to_timestamp,
+    window_mean,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,6 +125,7 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         self._warm_start: np.ndarray | None = None
         self._last_written: float | None = None
         self._train_requested = False
+        self.startup_hold = False  # set by __init__ while Home Assistant is still starting
         # room entity -> entity whose statistics describe its temperature
         self._room_history: dict[str, str | None] = {}
         self._resolve_rooms()
@@ -206,6 +209,61 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
                 }
             )
         return out
+
+    async def _async_smoothed(self, now: datetime) -> dict[str, float]:
+        """Mean temperature of the room sensors over the last SMOOTH_HOURS hours.
+
+        Opening a window or a door for a few minutes must not move the supply
+        temperature of a floor that reacts in hours.
+        """
+        ids = sorted({e for e in self._room_history.values() if e})
+        if not ids:
+            return {}
+        start = now - timedelta(hours=SMOOTH_HOURS)
+        try:
+            states = await get_instance(self.hass).async_add_executor_job(
+                partial(
+                    get_significant_states,
+                    self.hass,
+                    start,
+                    now,
+                    entity_ids=ids,
+                    include_start_time_state=True,
+                    significant_changes_only=False,
+                    minimal_response=False,
+                    no_attributes=True,
+                )
+            )
+        except HomeAssistantError as err:
+            _LOGGER.debug("Room history not available, using live values: %s", err)
+            return {}
+        out: dict[str, float] = {}
+        for eid in ids:
+            points = []
+            for st in states.get(eid, []):
+                val = _state_float(st)
+                points.append((st.last_changed.timestamp(), math.nan if val is None else val))
+            mean = window_mean(points, start.timestamp(), now.timestamp())
+            if mean is not None:
+                out[eid] = mean
+        return out
+
+    def _smooth_rooms(self, rooms: list[dict[str, Any]], smooth: dict[str, float]) -> list[dict[str, Any]]:
+        """Replace the live room temperatures by their average over the window."""
+        for r in rooms:
+            mean = smooth.get(self._room_history.get(r["entity_id"]) or "")
+            if mean is None:
+                continue
+            live = r["temperature"]
+            r["temperature_now"] = live
+            r["temperature"] = round(mean, 2)
+            if r["setpoint"] is not None:
+                r["deviation"] = round(mean - r["setpoint"], 2)
+            # a sensor that just dropped out keeps its room in the plan; a
+            # thermostat without a reading has no known set point and stays out
+            if live is None and not r["entity_id"].startswith("climate."):
+                r["active"] = True
+        return rooms
 
     # ------------------------------------------------------------------ setup
     async def async_load(self) -> None:
@@ -441,7 +499,9 @@ class MpcCoordinator(DataUpdateCoordinator[MpcData]):
         except HomeAssistantError as err:
             raise UpdateFailed(f"Reading the recorder failed: {err}") from err
 
-        rooms = self.room_states()
+        if self.startup_hold:
+            return MpcData(status=STATUS_INPUT_MISSING, message="starting")
+        rooms = self._smooth_rooms(self.room_states(), await self._async_smoothed(now))
         room_now = self._room_mean(rooms)
         active = [r for r in rooms if r["active"]]
         mpc_rooms = (

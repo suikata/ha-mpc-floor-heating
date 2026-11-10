@@ -187,6 +187,18 @@ def hourly_mean_from_points(
     return out
 
 
+def window_mean(points: Iterable[Point], start_ts: float, end_ts: float) -> float | None:
+    """Time weighted mean over one window from state changes (sample and hold).
+
+    NaN marks unavailable periods and is excluded. None if less than a quarter
+    of the window is covered by data.
+    """
+    if end_ts <= start_ts:
+        return None
+    value = float(hourly_mean_from_points(points, start_ts, 1, end_ts - start_ts)[0])
+    return value if math.isfinite(value) else None
+
+
 def mean_of_rows(rows: list[np.ndarray]) -> np.ndarray:
     """Mean over sensors per hour, ignoring NaNs (NaN if all are NaN)."""
     if not rows:

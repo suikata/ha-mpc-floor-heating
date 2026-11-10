@@ -39,6 +39,8 @@ RUN_MINUTE: Final = 7  # every hour at hh:07, after HA compiled the hourly stati
 RETRAIN_HOUR: Final = 3
 RETRAIN_MINUTE: Final = 17
 HISTORY_HOURS: Final = 96  # supply history fed into the floor state filter
+SMOOTH_HOURS: Final = 2  # room temperatures are averaged over this window (ventilating, door open)
+STARTUP_HOLD_SECONDS: Final = 180  # after a restart wait for thermostats and sensors to report
 
 # --- status values -------------------------------------------------------------
 STATUS_LEARNING: Final = "learning"

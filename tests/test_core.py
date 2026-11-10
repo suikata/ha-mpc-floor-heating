@@ -185,3 +185,16 @@ def test_naive_times_use_default_zone():
     tz = timezone(timedelta(hours=1))
     assert T.to_timestamp("2026-11-09T15:00:00") is None
     assert T.to_timestamp("2026-11-09T15:00:00", None, tz) == datetime(2026, 11, 9, 14, 0, tzinfo=UTC).timestamp()
+
+
+def test_window_mean():
+    start, end = 1000.0, 1000.0 + 7200.0
+    # constant, then a 10 minute dip (door open): the mean barely moves
+    pts = [(900.0, 22.0), (3000.0, 20.0), (3600.0, 22.0)]
+    assert T.window_mean(pts, start, end) == pytest.approx(22.0 - 2.0 * 600 / 7200, abs=1e-9)
+    # unavailable periods are left out, not counted as zero
+    pts = [(900.0, 22.0), (3000.0, math.nan), (5000.0, 23.0)]
+    assert T.window_mean(pts, start, end) == pytest.approx((22.0 * 2000 + 23.0 * 3200) / 5200)
+    # nothing or too little data: no value
+    assert T.window_mean([], start, end) is None
+    assert T.window_mean([(900.0, 22.0), (1500.0, math.nan)], start, end) is None

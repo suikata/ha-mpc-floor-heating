@@ -396,3 +396,54 @@ def test_thermostats_use_their_set_points(setup):
         assert coordinator.data.result.supply < data.result.supply
 
     asyncio.run(run())
+
+
+def test_room_temperatures_are_smoothed(setup):
+    hass, coordinator, const = setup
+    coord_mod = sys.modules["mpc_floor_heating.coordinator"]
+    start = NOW - timedelta(hours=2)
+
+    def history(hass_, start_, end_, entity_ids=None, **kwargs):
+        # room_a: 22.5 for 2 h, a 10 minute dip to 20.5 (window open) ending now
+        # room_b: no history at all
+        dip = NOW - timedelta(minutes=10)
+        return {
+            "sensor.room_a": [
+                State("sensor.room_a", "22.5", last_updated=start - timedelta(hours=1)),
+                State("sensor.room_a", "20.5", last_updated=dip),
+            ]
+        }
+
+    coord_mod.get_significant_states = history
+    hass.states.set("sensor.room_a", 20.5)  # live value is the dip
+    hass.states.set("sensor.room_b", 22.3)
+
+    async def run():
+        await coordinator.async_refresh()
+        data = coordinator.data
+        assert data.status == const.STATUS_STANDBY, data.message
+        a = next(r for r in data.rooms if r["entity_id"] == "sensor.room_a")
+        b = next(r for r in data.rooms if r["entity_id"] == "sensor.room_b")
+        assert a["temperature_now"] == 20.5
+        assert a["temperature"] == pytest.approx(22.5 - 2.0 * 10 / 120, abs=0.01)  # 22.33
+        assert b["temperature"] == 22.3 and "temperature_now" not in b  # no history: live value
+        assert data.room_now == pytest.approx((a["temperature"] + 22.3) / 2, abs=0.01)
+
+    asyncio.run(run())
+
+
+def test_startup_hold_waits_for_sensors(setup):
+    hass, coordinator, const = setup
+    coordinator.startup_hold = True
+
+    async def run():
+        coordinator.active = True
+        await coordinator.async_refresh()
+        data = coordinator.data
+        assert data.status == const.STATUS_INPUT_MISSING and data.message == "starting"
+        assert data.output is None and not any(c[1] == "set_value" for c in hass.services.calls)
+        coordinator.startup_hold = False
+        await coordinator.async_refresh()
+        assert coordinator.data.status == const.STATUS_ACTIVE
+
+    asyncio.run(run())
